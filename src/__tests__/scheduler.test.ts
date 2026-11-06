@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { calculateHeatmap, findBestDates, ParticipantVote } from '@/lib/scheduler';
+import { 
+  calculateHeatmap, 
+  findBestDates, 
+  ParticipantVote, 
+  generateWeeklyCalendarGrid 
+} from '@/lib/scheduler';
 
 describe('Scheduler Logic', () => {
   const dates = ['2026-11-10', '2026-11-11', '2026-11-12'];
@@ -49,5 +54,23 @@ describe('Scheduler Logic', () => {
     expect(best.length).toBe(1);
     expect(best[0].date).toBe('2026-11-11');
     expect(best[0].score).toBe(3);
+  });
+
+  it('generates weekly calendar grid starting on Monday with proper padding', () => {
+    // 2026-11-11 is Wednesday (day index 2 in Monday-based index 0..6)
+    // 2026-11-15 is Sunday (day index 6)
+    const testDates = ['2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15'];
+    const grid = generateWeeklyCalendarGrid(testDates);
+
+    // Each week should have 7 slots
+    expect(grid.length % 7).toBe(0);
+    // 2026-11-11 is Wed, so Mon(0) and Tue(1) should be null (padded)
+    expect(grid[0]).toBeNull(); // Monday
+    expect(grid[1]).toBeNull(); // Tuesday
+    expect(grid[2]).toBe('2026-11-11'); // Wednesday
+    expect(grid[3]).toBe('2026-11-12'); // Thursday
+    expect(grid[4]).toBe('2026-11-13'); // Friday
+    expect(grid[5]).toBe('2026-11-14'); // Saturday
+    expect(grid[6]).toBe('2026-11-15'); // Sunday
   });
 });

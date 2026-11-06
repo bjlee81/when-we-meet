@@ -17,7 +17,13 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { AdBanner } from '@/components/AdBanner';
-import { calculateHeatmap, findBestDates, ParticipantVote, DateSummary } from '@/lib/scheduler';
+import { 
+  calculateHeatmap, 
+  findBestDates, 
+  generateWeeklyCalendarGrid, 
+  ParticipantVote, 
+  DateSummary 
+} from '@/lib/scheduler';
 import { format, parseISO } from 'date-fns';
 import { ko } from 'date-fns/locale';
 
@@ -43,7 +49,6 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
 
   // 투표 폼 상태
   const [myParticipantName, setMyParticipantName] = useState('');
-  const [pin, setPin] = useState('');
   const [deviceToken, setDeviceToken] = useState('');
   const [isMyDevice, setIsMyDevice] = useState(false);
   const [selectedAvailable, setSelectedAvailable] = useState<string[]>([]);
@@ -88,12 +93,10 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
 
     // 2. 이 방에서 이 브라우저로 참여했던 이름 복원
     const savedName = localStorage.getItem(`wwm_user_${eventId}`);
-    const savedPin = localStorage.getItem(`wwm_pin_${eventId}`);
     if (savedName) {
       setMyParticipantName(savedName);
       setIsMyDevice(true);
     }
-    if (savedPin) setPin(savedPin);
   }, [eventId]);
 
   // 참여자 이름 선택/입력 시 기존 투표 자동 로딩
@@ -143,7 +146,6 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
         body: JSON.stringify({
           participantName: myParticipantName.trim(),
           deviceToken,
-          pin: pin ? pin.trim() : undefined,
           availableDates: selectedAvailable,
           maybeDates: selectedMaybe,
         }),
@@ -154,7 +156,6 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
 
       // 본인 브라우저에 등록 정보 저장
       localStorage.setItem(`wwm_user_${eventId}`, myParticipantName.trim());
-      if (pin) localStorage.setItem(`wwm_pin_${eventId}`, pin.trim());
       setIsMyDevice(true);
 
       await fetchEvent();
@@ -227,6 +228,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
   const heatmap = calculateHeatmap(event.dates, event.votes);
   const bestDates = findBestDates(heatmap);
   const totalParticipants = event.votes.length;
+  const weeklyGrid = generateWeeklyCalendarGrid(event.dates);
 
   return (
     <div className="min-h-screen bg-gray-50/60 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex flex-col items-center p-4 sm:p-8">
@@ -306,13 +308,13 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
         )}
 
         {/* 참여자 투표 섹션 */}
-        <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 shadow-sm border border-zinc-200 dark:border-zinc-800 space-y-4">
-          <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl p-5 sm:p-6 shadow-sm border border-zinc-200 dark:border-zinc-800 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-zinc-100 dark:border-zinc-800 pb-3">
             <h2 className="font-bold text-base flex items-center gap-2">
               <span>내 가능한 날짜 등록/수정</span>
             </h2>
-            <div className="text-[11px] text-zinc-600 dark:text-zinc-400">
-              날짜를 터치하여 상태 전환 (가능 🟢 ➔ 애매함 🟡 ➔ 불가능 ⚪)
+            <div className="text-[11px] text-zinc-500">
+              날짜 클릭 시 전환: <strong>가능 🟢</strong> ➔ <strong>애매함 🟡</strong> ➔ <strong>불가능 ⚪</strong>
             </div>
           </div>
 
@@ -324,75 +326,84 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-1">
-                  내 닉네임 / 이름 <span className="text-rose-500">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="예: 홍길동"
-                    value={myParticipantName}
-                    onChange={(e) => setMyParticipantName(e.target.value)}
-                    required
-                    className="w-full px-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                  {isMyDevice && (
-                    <span className="absolute right-2.5 top-2 text-[10px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border border-emerald-300 dark:border-emerald-800">
-                      <Check className="w-2.5 h-2.5" /> 내 기기 인증됨
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-1 flex items-center justify-between">
-                  <span>
-                    수정 방지 PIN <span className="text-zinc-600 dark:text-zinc-400 text-[10px] font-normal">(선택사항)</span>
+            <div>
+              <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-1">
+                내 닉네임 / 이름 <span className="text-rose-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="예: 홍길동 (이름을 입력하면 내 기기에서 바로 인식됩니다)"
+                  value={myParticipantName}
+                  onChange={(e) => setMyParticipantName(e.target.value)}
+                  required
+                  className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+                {isMyDevice && (
+                  <span className="absolute right-2.5 top-2.5 text-[10px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border border-emerald-300 dark:border-emerald-800">
+                    <Check className="w-2.5 h-2.5" /> 내 기기 인증됨
                   </span>
-                  <span className="text-[10px] text-zinc-600 dark:text-zinc-400 font-normal">
-                    {isMyDevice ? '기기 자동 인증 상태' : '타 기기 접속 시 필요'}
-                  </span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="password"
-                    placeholder={isMyDevice ? "비밀번호 없이도 수정 가능합니다" : "기기 변경 시 사용할 4자리 PIN (선택)"}
-                    value={pin}
-                    onChange={(e) => setPin(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm focus:ring-2 focus:ring-blue-500 outline-none placeholder:text-zinc-400"
-                  />
-                  <Lock className="w-4 h-4 text-zinc-400 absolute left-3 top-2.5" />
-                </div>
+                )}
               </div>
             </div>
 
-            {/* 날짜 선택 그리드 */}
+            {/* 🗓️ 월요일 시작 주단위 7열 캘린더 */}
             <div className="space-y-2">
-              <div className="text-xs font-semibold text-zinc-600 dark:text-zinc-400">날짜별 가능 여부 선택</div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2">
-                {event.dates.map((d) => {
+              <div className="flex items-center justify-between text-xs font-semibold text-zinc-600 dark:text-zinc-400">
+                <span>주간 달력 (월요일 시작)</span>
+                <span className="text-[11px] font-normal text-zinc-400">토/일요일 주말 구분</span>
+              </div>
+
+              {/* 요일 헤더 (월~일) */}
+              <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold py-1 border-b border-zinc-100 dark:border-zinc-800">
+                <span className="text-zinc-700 dark:text-zinc-300">월</span>
+                <span className="text-zinc-700 dark:text-zinc-300">화</span>
+                <span className="text-zinc-700 dark:text-zinc-300">수</span>
+                <span className="text-zinc-700 dark:text-zinc-300">목</span>
+                <span className="text-zinc-700 dark:text-zinc-300">금</span>
+                <span className="text-blue-600 dark:text-blue-400">토</span>
+                <span className="text-rose-600 dark:text-rose-400">일</span>
+              </div>
+
+              {/* 7열 날짜 그리드 */}
+              <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
+                {weeklyGrid.map((d, index) => {
+                  if (!d) {
+                    return (
+                      <div
+                        key={`empty-${index}`}
+                        className="h-16 sm:h-20 rounded-lg sm:rounded-xl bg-zinc-100/30 dark:bg-zinc-900/30 border border-transparent opacity-30"
+                      />
+                    );
+                  }
+
                   const isAvail = selectedAvailable.includes(d);
                   const isMaybe = selectedMaybe.includes(d);
                   const dateObj = parseISO(d);
-                  const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+                  const dayOfWeek = dateObj.getDay();
+                  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
-                  let cardStyle = 'bg-zinc-50 dark:bg-zinc-800/60 border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400';
-                  let statusBadge = <span className="text-[10px] text-zinc-600 dark:text-zinc-400">불가능</span>;
+                  let cardStyle =
+                    'bg-zinc-50 dark:bg-zinc-800/60 border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-zinc-300';
+                  let statusText = '불가능';
+                  let statusBadge = <span className="text-[9px] sm:text-[10px] text-zinc-400">불가능</span>;
 
                   if (isAvail) {
-                    cardStyle = 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-500 text-emerald-700 dark:text-emerald-300 ring-2 ring-emerald-500/20';
+                    cardStyle =
+                      'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500 text-emerald-800 dark:text-emerald-200 ring-2 ring-emerald-500/30';
+                    statusText = '가능';
                     statusBadge = (
-                      <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
-                        <Check className="w-3 h-3" /> 가능!
+                      <span className="inline-flex items-center gap-0.5 text-[9px] sm:text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                        <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> 가능
                       </span>
                     );
                   } else if (isMaybe) {
-                    cardStyle = 'bg-amber-50 dark:bg-amber-950/50 border-amber-500 text-amber-700 dark:text-amber-300 ring-2 ring-amber-500/20';
+                    cardStyle =
+                      'bg-amber-50 dark:bg-amber-950/60 border-amber-500 text-amber-800 dark:text-amber-200 ring-2 ring-amber-500/30';
+                    statusText = '애매';
                     statusBadge = (
-                      <span className="flex items-center gap-1 text-[11px] font-bold text-amber-600 dark:text-amber-400">
-                        <HelpCircle className="w-3 h-3" /> 애매함
+                      <span className="inline-flex items-center gap-0.5 text-[9px] sm:text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                        <HelpCircle className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> 애매
                       </span>
                     );
                   }
@@ -402,14 +413,25 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
                       type="button"
                       key={d}
                       onClick={() => toggleDateStatus(d)}
-                      className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between h-20 cursor-pointer hover:shadow-sm ${cardStyle}`}
+                      className={`p-1.5 sm:p-2.5 rounded-lg sm:rounded-xl border text-center sm:text-left transition-all flex flex-col justify-between h-16 sm:h-20 cursor-pointer ${cardStyle}`}
                     >
-                      <div>
-                        <div className={`text-xs font-medium ${isWeekend ? 'text-rose-500 font-bold' : ''}`}>
-                          {format(dateObj, 'M월 d일 (EEE)', { locale: ko })}
-                        </div>
+                      <div className="flex items-center justify-between w-full">
+                        <span
+                          className={`text-xs sm:text-sm font-bold ${
+                            dayOfWeek === 0
+                              ? 'text-rose-600 dark:text-rose-400'
+                              : dayOfWeek === 6
+                              ? 'text-blue-600 dark:text-blue-400'
+                              : ''
+                          }`}
+                        >
+                          {format(dateObj, 'd')}
+                        </span>
+                        <span className="text-[9px] text-zinc-400 hidden sm:inline">
+                          {format(dateObj, 'M월')}
+                        </span>
                       </div>
-                      <div>{statusBadge}</div>
+                      <div className="w-full text-center sm:text-left truncate">{statusBadge}</div>
                     </button>
                   );
                 })}
@@ -419,7 +441,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
             <button
               type="submit"
               disabled={submittingVote || !myParticipantName.trim()}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-bold rounded-xl shadow-md transition disabled:opacity-50 text-sm cursor-pointer"
+              className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-bold rounded-xl shadow-md transition disabled:opacity-50 text-sm cursor-pointer"
             >
               {submittingVote ? '저장 중...' : '내 일정 등록/수정 완료'}
             </button>
@@ -427,28 +449,50 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
         </div>
 
         {/* 📊 취합 히트맵 & 참여자 현황 */}
-        <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 shadow-sm border border-zinc-200 dark:border-zinc-800 space-y-4">
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl p-5 sm:p-6 shadow-sm border border-zinc-200 dark:border-zinc-800 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-zinc-100 dark:border-zinc-800 pb-3">
             <h2 className="font-bold text-base flex items-center gap-2">
-              <span>전체 일정 취합 히트맵</span>
+              <span>전체 일정 취합 주간 히트맵</span>
             </h2>
-            <div className="text-xs text-zinc-600 dark:text-zinc-400">
-              날짜를 클릭하면 가능한 친구 목록을 볼 수 있습니다
+            <div className="text-xs text-zinc-500">
+              날짜를 클릭하면 해당 일자에 가능한 친구 목록을 볼 수 있습니다
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2.5">
-            {event.dates.map((d) => {
+          {/* 주간 7열 요일 헤더 */}
+          <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold py-1 border-b border-zinc-100 dark:border-zinc-800">
+            <span className="text-zinc-700 dark:text-zinc-300">월</span>
+            <span className="text-zinc-700 dark:text-zinc-300">화</span>
+            <span className="text-zinc-700 dark:text-zinc-300">수</span>
+            <span className="text-zinc-700 dark:text-zinc-300">목</span>
+            <span className="text-zinc-700 dark:text-zinc-300">금</span>
+            <span className="text-blue-600 dark:text-blue-400">토</span>
+            <span className="text-rose-600 dark:text-rose-400">일</span>
+          </div>
+
+          {/* 주간 7열 히트맵 그리드 */}
+          <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
+            {weeklyGrid.map((d, index) => {
+              if (!d) {
+                return (
+                  <div
+                    key={`heatmap-empty-${index}`}
+                    className="h-16 sm:h-20 rounded-lg sm:rounded-xl bg-zinc-100/30 dark:bg-zinc-900/30 border border-transparent opacity-30"
+                  />
+                );
+              }
+
               const summary = heatmap[d];
               const dateObj = parseISO(d);
+              const dayOfWeek = dateObj.getDay();
               const ratio = totalParticipants > 0 ? summary.availableCount / totalParticipants : 0;
 
               // 히트맵 컬러 단계 (참여율에 따른 농도)
-              let bgLevel = 'bg-zinc-50 dark:bg-zinc-800/40 border-zinc-200 dark:border-zinc-700';
+              let bgLevel = 'bg-zinc-50 dark:bg-zinc-800/40 border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400';
               if (totalParticipants > 0) {
-                if (ratio >= 0.8) bgLevel = 'bg-emerald-500 text-white border-emerald-600 shadow-md shadow-emerald-500/20';
+                if (ratio >= 0.8) bgLevel = 'bg-emerald-500 text-white border-emerald-600 shadow-sm';
                 else if (ratio >= 0.5) bgLevel = 'bg-emerald-300 dark:bg-emerald-700 text-zinc-900 dark:text-white border-emerald-400';
-                else if (ratio > 0) bgLevel = 'bg-emerald-100 dark:bg-emerald-950 text-zinc-900 dark:text-white border-emerald-200';
+                else if (ratio > 0) bgLevel = 'bg-emerald-100 dark:bg-emerald-950/80 text-zinc-900 dark:text-white border-emerald-200 dark:border-emerald-900';
               }
 
               const isSelected = activeDateSummary?.date === d;
@@ -457,21 +501,36 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
                 <button
                   key={d}
                   onClick={() => setActiveDateSummary(summary)}
-                  className={`p-3 rounded-xl border text-left transition-all h-22 flex flex-col justify-between cursor-pointer hover:scale-[1.02] ${bgLevel} ${
+                  className={`p-1.5 sm:p-2.5 rounded-lg sm:rounded-xl border text-center sm:text-left transition-all h-16 sm:h-20 flex flex-col justify-between cursor-pointer hover:scale-[1.02] ${bgLevel} ${
                     isSelected ? 'ring-2 ring-blue-600' : ''
                   }`}
                 >
-                  <div className="text-xs font-semibold">
-                    {format(dateObj, 'M/d (EEE)', { locale: ko })}
+                  <div className="flex items-center justify-between w-full">
+                    <span
+                      className={`text-xs sm:text-sm font-bold ${
+                        ratio >= 0.8
+                          ? 'text-white'
+                          : dayOfWeek === 0
+                          ? 'text-rose-600 dark:text-rose-400'
+                          : dayOfWeek === 6
+                          ? 'text-blue-600 dark:text-blue-400'
+                          : ''
+                      }`}
+                    >
+                      {format(dateObj, 'd')}
+                    </span>
+                    <span className="text-[9px] opacity-75 hidden sm:inline">
+                      {format(dateObj, 'M/d')}
+                    </span>
                   </div>
 
-                  <div className="space-y-0.5">
-                    <div className="text-sm font-black">
-                      {summary.availableCount}명 가능
+                  <div className="w-full text-center sm:text-left">
+                    <div className="text-[11px] sm:text-xs font-black">
+                      {summary.availableCount}명
                     </div>
                     {summary.maybeCount > 0 && (
-                      <div className="text-[10px] opacity-80">
-                        + {summary.maybeCount}명 애매함
+                      <div className="text-[9px] opacity-80 hidden sm:block">
+                        +{summary.maybeCount}
                       </div>
                     )}
                   </div>
