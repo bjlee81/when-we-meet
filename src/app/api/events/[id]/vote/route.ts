@@ -9,7 +9,7 @@ export async function POST(
     await initDb();
     const { id } = await params;
     const body = await request.json();
-    const { participantName, pin, availableDates, maybeDates } = body;
+    const { participantName, pin, deviceToken, availableDates, maybeDates } = body;
 
     if (!participantName || !participantName.trim()) {
       return NextResponse.json(
@@ -18,9 +18,9 @@ export async function POST(
       );
     }
 
-    if (!pin || !pin.trim()) {
+    if (!pin && !deviceToken) {
       return NextResponse.json(
-        { error: '본인 확인용 4자리 비밀번호(PIN)를 입력해주세요.' },
+        { error: '브라우저 기기 인증 또는 비밀번호(PIN)가 필요합니다.' },
         { status: 400 }
       );
     }
@@ -28,6 +28,7 @@ export async function POST(
     const res = await submitVote(id, {
       participantName,
       pin,
+      deviceToken,
       availableDates: availableDates || [],
       maybeDates: maybeDates || [],
     });

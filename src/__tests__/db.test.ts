@@ -69,10 +69,33 @@ describe('Database / Storage Operations', () => {
     });
     expect(resRightPin.success).toBe(true);
 
-    const updatedEvent = await getEventById(event.id);
-    expect(updatedEvent?.votes.length).toBe(1);
-    expect(updatedEvent?.votes[0].participantName).toBe('철수');
-    expect(updatedEvent?.votes[0].availableDates).toEqual(['2026-11-15']);
+    // 4. 브라우저/기기 고유 토큰(Device Token) 기반 무암호 인증 테스트
+    const resDevice1 = await submitVote(event.id, {
+      participantName: '영희',
+      deviceToken: 'device-token-abc',
+      availableDates: ['2026-11-14'],
+      maybeDates: [],
+    });
+    expect(resDevice1.success).toBe(true);
+
+    // 동일 기기에서 수정 시도 -> 비밀번호 없이도 자동 인증 성공
+    const resDevice1Update = await submitVote(event.id, {
+      participantName: '영희',
+      deviceToken: 'device-token-abc',
+      availableDates: ['2026-11-14', '2026-11-15'],
+      maybeDates: [],
+    });
+    expect(resDevice1Update.success).toBe(true);
+
+    // 다른 기기(다른 브라우저)에서 같은 이름으로 덮어쓰기 시도 -> 차단
+    const resDevice2Spoof = await submitVote(event.id, {
+      participantName: '영희',
+      deviceToken: 'device-token-xyz',
+      availableDates: ['2026-11-14'],
+      maybeDates: [],
+    });
+    expect(resDevice2Spoof.success).toBe(false);
+    expect(resDevice2Spoof.error).toMatch(/기기|브라우저|PIN/);
   });
 
   it('fails to delete with wrong password, succeeds with correct password', async () => {

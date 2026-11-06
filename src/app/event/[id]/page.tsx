@@ -44,6 +44,8 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
   // 투표 폼 상태
   const [myParticipantName, setMyParticipantName] = useState('');
   const [pin, setPin] = useState('');
+  const [deviceToken, setDeviceToken] = useState('');
+  const [isMyDevice, setIsMyDevice] = useState(false);
   const [selectedAvailable, setSelectedAvailable] = useState<string[]>([]);
   const [selectedMaybe, setSelectedMaybe] = useState<string[]>([]);
   const [submittingVote, setSubmittingVote] = useState(false);
@@ -75,10 +77,22 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
 
   useEffect(() => {
     fetchEvent();
-    // 로컬 스토리지에서 지난 닉네임 및 PIN 복원 시도
+
+    // 1. 브라우저 고유 기기 식별 토큰 발급 및 로드
+    let token = localStorage.getItem('wwm_device_token');
+    if (!token) {
+      token = 'dev_' + Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
+      localStorage.setItem('wwm_device_token', token);
+    }
+    setDeviceToken(token);
+
+    // 2. 이 방에서 이 브라우저로 참여했던 이름 복원
     const savedName = localStorage.getItem(`wwm_user_${eventId}`);
     const savedPin = localStorage.getItem(`wwm_pin_${eventId}`);
-    if (savedName) setMyParticipantName(savedName);
+    if (savedName) {
+      setMyParticipantName(savedName);
+      setIsMyDevice(true);
+    }
     if (savedPin) setPin(savedPin);
   }, [eventId]);
 
@@ -91,8 +105,14 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
     if (existing) {
       setSelectedAvailable(existing.availableDates);
       setSelectedMaybe(existing.maybeDates || []);
+
+      // 이 브라우저에 저장된 이름과 일치하는지 확인
+      const savedName = localStorage.getItem(`wwm_user_${eventId}`);
+      setIsMyDevice(savedName === myParticipantName.trim());
+    } else {
+      setIsMyDevice(false);
     }
-  }, [myParticipantName, event]);
+  }, [myParticipantName, event, eventId]);
 
   const toggleDateStatus = (dateStr: string) => {
     // 순환: 미선택 -> 가능(Available) -> 애매함(Maybe) -> 미선택
@@ -114,10 +134,6 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
       setVoteError('참여자 이름을 입력해주세요.');
       return;
     }
-    if (!pin || pin.trim().length < 4) {
-      setVoteError('본인 확인 및 수정 방지용 4자리 비밀번호(PIN)를 입력해주세요.');
-      return;
-    }
 
     setSubmittingVote(true);
     try {
@@ -126,7 +142,8 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           participantName: myParticipantName.trim(),
-          pin: pin.trim(),
+          deviceToken,
+          pin: pin ? pin.trim() : undefined,
           availableDates: selectedAvailable,
           maybeDates: selectedMaybe,
         }),
@@ -135,8 +152,11 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
+      // 본인 브라우저에 등록 정보 저장
       localStorage.setItem(`wwm_user_${eventId}`, myParticipantName.trim());
-      localStorage.setItem(`wwm_pin_${eventId}`, pin.trim());
+      if (pin) localStorage.setItem(`wwm_pin_${eventId}`, pin.trim());
+      setIsMyDevice(true);
+
       await fetchEvent();
       alert('일정이 성공적으로 저장되었습니다!');
     } catch (err: any) {
@@ -309,29 +329,39 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
                 <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-1">
                   내 닉네임 / 이름 <span className="text-rose-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  placeholder="예: 홍길동"
-                  value={myParticipantName}
-                  onChange={(e) => setMyParticipantName(e.target.value)}
-                  required
-                  className="w-full px-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="예: 홍길동"
+                    value={myParticipantName}
+                    onChange={(e) => setMyParticipantName(e.target.value)}
+                    required
+                    className="w-full px-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                  {isMyDevice && (
+                    <span className="absolute right-2.5 top-2 text-[10px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border border-emerald-300 dark:border-emerald-800">
+                      <Check className="w-2.5 h-2.5" /> 내 기기 인증됨
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-1 flex items-center justify-between">
-                  <span>수정 방지용 비밀번호 (PIN) <span className="text-rose-500">*</span></span>
-                  <span className="text-[10px] text-zinc-600 dark:text-zinc-400 font-normal">4자리 숫자 등</span>
+                  <span>
+                    수정 방지 PIN <span className="text-zinc-600 dark:text-zinc-400 text-[10px] font-normal">(선택사항)</span>
+                  </span>
+                  <span className="text-[10px] text-zinc-600 dark:text-zinc-400 font-normal">
+                    {isMyDevice ? '기기 자동 인증 상태' : '타 기기 접속 시 필요'}
+                  </span>
                 </label>
                 <div className="relative">
                   <input
                     type="password"
-                    placeholder="4자리 이상 (다른 사람 수정 방지)"
+                    placeholder={isMyDevice ? "비밀번호 없이도 수정 가능합니다" : "기기 변경 시 사용할 4자리 PIN (선택)"}
                     value={pin}
                     onChange={(e) => setPin(e.target.value)}
-                    required
-                    className="w-full pl-9 pr-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full pl-9 pr-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm focus:ring-2 focus:ring-blue-500 outline-none placeholder:text-zinc-400"
                   />
                   <Lock className="w-4 h-4 text-zinc-400 absolute left-3 top-2.5" />
                 </div>

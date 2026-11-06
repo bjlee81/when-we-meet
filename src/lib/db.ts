@@ -24,7 +24,8 @@ export interface CreateEventInput {
 
 export interface SubmitVoteInput {
   participantName: string;
-  pin: string;
+  pin?: string;
+  deviceToken?: string;
   availableDates: string[];
   maybeDates?: string[];
 }
@@ -69,6 +70,7 @@ export async function initDb(): Promise<void> {
       eventId TEXT NOT NULL,
       participantName TEXT NOT NULL,
       pinHash TEXT,
+      deviceToken TEXT,
       availableDates TEXT NOT NULL,
       maybeDates TEXT NOT NULL,
       createdAt TEXT NOT NULL,
@@ -76,12 +78,14 @@ export async function initDb(): Promise<void> {
     );
   `);
 
-  // 기존 테이블 호환성을 위해 pinHash 컬럼 확인 및 추가 시도
+  // 기존 테이블 호환성을 위해 컬럼 확인 및 추가 시도
   try {
     await db.execute(`ALTER TABLE votes ADD COLUMN pinHash TEXT;`);
-  } catch {
-    // 이미 존재하는 경우 무시
-  }
+  } catch {}
+
+  try {
+    await db.execute(`ALTER TABLE votes ADD COLUMN deviceToken TEXT;`);
+  } catch {}
 }
 
 function generateDateRange(startStr: string, endStr: string): string[] {
@@ -173,13 +177,14 @@ export async function submitVote(
   const db = getDb();
   const trimmedName = input.participantName.trim();
   const pin = input.pin ? input.pin.trim() : '';
+  const deviceToken = input.deviceToken ? input.deviceToken.trim() : '';
 
-  if (!pin) {
-    return { success: false, error: '본인 확인용 4자리 비밀번호(PIN)를 입력해주세요.' };
+  if (!pin && !deviceToken) {
+    return { success: false, error: '본인 인증을 위한 기기 토큰 또는 비밀번호(PIN)가 필요합니다.' };
   }
 
   const existingRes = await db.execute({
-    sql: `SELECT id, pinHash FROM votes WHERE eventId = ? AND participantName = ?`,
+    sql: `SELECT id, pinHash, deviceToken FROM votes WHERE eventId = ? AND participantName = ?`,
     args: [eventId, trimmedName],
   });
 
@@ -190,15 +195,24 @@ export async function submitVote(
   if (existingRes.rows.length > 0) {
     const existingRow = existingRes.rows[0];
     const storedPinHash = existingRow.pinHash ? String(existingRow.pinHash) : null;
+    const storedDeviceToken = existingRow.deviceToken ? String(existingRow.deviceToken) : null;
 
-    if (storedPinHash) {
+    // 인증 검증:
+    // 1) 등록된 브라우저/기기 토큰과 일치하면 즉시 통과!
+    let authenticated = false;
+    if (storedDeviceToken && deviceToken && storedDeviceToken === deviceToken) {
+      authenticated = true;
+    } else if (storedPinHash && pin) {
+      // 2) 기기가 다르더라도 PIN이 일치하면 통과
       const isMatch = await bcrypt.compare(pin, storedPinHash);
-      if (!isMatch) {
-        return {
-          success: false,
-          error: '이미 등록된 이름입니다. 해당 작성자의 비밀번호(PIN)와 일치하지 않습니다.',
-        };
-      }
+      if (isMatch) authenticated = true;
+    }
+
+    if (!authenticated) {
+      return {
+        success: false,
+        error: '이미 등록된 이름입니다. 최초 등록한 브라우저(기기)가 아니거나 비밀번호(PIN)가 일치하지 않습니다.',
+      };
     }
 
     const voteId = String(existingRow.id);
@@ -220,16 +234,17 @@ export async function submitVote(
 
   // 신규 등록
   const voteId = Math.random().toString(36).substring(2, 10);
-  const pinHash = await bcrypt.hash(pin, 10);
+  const pinHash = pin ? await bcrypt.hash(pin, 10) : null;
 
   await db.execute({
-    sql: `INSERT INTO votes (id, eventId, participantName, pinHash, availableDates, maybeDates, createdAt)
-          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO votes (id, eventId, participantName, pinHash, deviceToken, availableDates, maybeDates, createdAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       voteId,
       eventId,
       trimmedName,
       pinHash,
+      deviceToken || null,
       availableDatesJson,
       maybeDatesJson,
       now,
