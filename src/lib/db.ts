@@ -6,6 +6,7 @@ export interface EventData {
   id: string;
   title: string;
   description: string;
+  location?: string;
   startDate: string;
   endDate: string;
   dates: string[];
@@ -17,8 +18,16 @@ export interface EventData {
 export interface CreateEventInput {
   title: string;
   description?: string;
+  location?: string;
   startDate: string; // YYYY-MM-DD
   endDate: string;   // YYYY-MM-DD
+  password: string;
+}
+
+export interface UpdateEventInput {
+  title?: string;
+  description?: string;
+  location?: string;
   password: string;
 }
 
@@ -56,6 +65,7 @@ export async function initDb(): Promise<void> {
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       description TEXT,
+      location TEXT,
       startDate TEXT NOT NULL,
       endDate TEXT NOT NULL,
       dates TEXT NOT NULL,
@@ -63,6 +73,10 @@ export async function initDb(): Promise<void> {
       createdAt TEXT NOT NULL
     );
   `);
+
+  try {
+    await db.execute(`ALTER TABLE events ADD COLUMN location TEXT;`);
+  } catch {}
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS votes (
@@ -108,12 +122,13 @@ export async function createEvent(input: CreateEventInput): Promise<EventData> {
   const createdAt = new Date().toISOString();
 
   await db.execute({
-    sql: `INSERT INTO events (id, title, description, startDate, endDate, dates, passwordHash, createdAt)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO events (id, title, description, location, startDate, endDate, dates, passwordHash, createdAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       id,
       input.title,
       input.description || '',
+      input.location || '',
       input.startDate,
       input.endDate,
       JSON.stringify(dates),
@@ -126,6 +141,7 @@ export async function createEvent(input: CreateEventInput): Promise<EventData> {
     id,
     title: input.title,
     description: input.description || '',
+    location: input.location || '',
     startDate: input.startDate,
     endDate: input.endDate,
     dates,
@@ -161,6 +177,7 @@ export async function getEventById(id: string): Promise<EventData | null> {
     id: String(eventRow.id),
     title: String(eventRow.title),
     description: String(eventRow.description || ''),
+    location: eventRow.location ? String(eventRow.location) : '',
     startDate: String(eventRow.startDate),
     endDate: String(eventRow.endDate),
     dates: JSON.parse(String(eventRow.dates)),
@@ -260,6 +277,51 @@ export async function submitVote(
       maybeDates: input.maybeDates || [],
     },
   };
+}
+
+export async function updateEventDetails(
+  eventId: string,
+  input: UpdateEventInput
+): Promise<{ success: boolean; event?: EventData; error?: string }> {
+  const db = getDb();
+  const eventRes = await db.execute({
+    sql: `SELECT passwordHash FROM events WHERE id = ?`,
+    args: [eventId],
+  });
+
+  if (eventRes.rows.length === 0) {
+    return { success: false, error: '존재하지 않는 일정입니다.' };
+  }
+
+  const hash = String(eventRes.rows[0].passwordHash);
+  const isMatch = await bcrypt.compare(input.password, hash);
+
+  if (!isMatch) {
+    return { success: false, error: '방장 비밀번호가 일치하지 않습니다.' };
+  }
+
+  // 업데이트 실행
+  if (input.title !== undefined) {
+    await db.execute({
+      sql: `UPDATE events SET title = ? WHERE id = ?`,
+      args: [input.title, eventId],
+    });
+  }
+  if (input.description !== undefined) {
+    await db.execute({
+      sql: `UPDATE events SET description = ? WHERE id = ?`,
+      args: [input.description, eventId],
+    });
+  }
+  if (input.location !== undefined) {
+    await db.execute({
+      sql: `UPDATE events SET location = ? WHERE id = ?`,
+      args: [input.location, eventId],
+    });
+  }
+
+  const updated = await getEventById(eventId);
+  return { success: true, event: updated || undefined };
 }
 
 export async function deleteEventWithPassword(

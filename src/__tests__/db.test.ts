@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { 
   createEvent, 
   getEventById, 
+  updateEventDetails,
   deleteEventWithPassword, 
   submitVote, 
   initDb 
@@ -116,5 +117,36 @@ describe('Database / Storage Operations', () => {
 
     const deletedEvent = await getEventById(event.id);
     expect(deletedEvent).toBeNull();
+  });
+
+  it('updates event location and description with host password', async () => {
+    const event = await createEvent({
+      title: '장소 확정 테스트',
+      description: '아직 미정',
+      startDate: '2026-11-20',
+      endDate: '2026-11-22',
+      password: 'hostpassword',
+    });
+
+    // 1. 잘못된 비밀번호로 수정 시도 -> 실패
+    const failUpdate = await updateEventDetails(event.id, {
+      description: '강남역 11번 출구 고기집',
+      location: '강남역 맛있는삼겹살',
+      password: 'wrongpassword',
+    });
+    expect(failUpdate.success).toBe(false);
+    expect(failUpdate.error).toMatch(/비밀번호/);
+
+    // 2. 올바른 비밀번호로 수정 시도 -> 성공
+    const okUpdate = await updateEventDetails(event.id, {
+      description: '강남역 11번 출구 맛집 7시 모임 확정!',
+      location: '강남역 11번출구',
+      password: 'hostpassword',
+    });
+    expect(okUpdate.success).toBe(true);
+
+    const updated = await getEventById(event.id);
+    expect(updated?.description).toBe('강남역 11번 출구 맛집 7시 모임 확정!');
+    expect(updated?.location).toBe('강남역 11번출구');
   });
 });

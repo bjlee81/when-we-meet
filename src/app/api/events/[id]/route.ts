@@ -22,6 +22,42 @@ export async function GET(
   }
 }
 
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await initDb();
+    const { id } = await params;
+    const body = await request.json();
+    const { title, description, location, password } = body;
+
+    if (!password) {
+      return NextResponse.json(
+        { error: '방장 확인을 위한 비밀번호를 입력해주세요.' },
+        { status: 400 }
+      );
+    }
+
+    const { updateEventDetails } = await import('@/lib/db');
+    const res = await updateEventDetails(id, {
+      title,
+      description,
+      location,
+      password,
+    });
+
+    if (!res.success) {
+      return NextResponse.json({ error: res.error }, { status: 401 });
+    }
+
+    const { passwordHash, ...safeEvent } = res.event!;
+    return NextResponse.json({ success: true, event: safeEvent });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }

@@ -14,7 +14,10 @@ import {
   Lock, 
   AlertCircle,
   Copy,
-  ArrowLeft
+  ArrowLeft,
+  MapPin,
+  ExternalLink,
+  Edit3
 } from 'lucide-react';
 import { AdBanner } from '@/components/AdBanner';
 import { 
@@ -31,6 +34,7 @@ interface EventDetails {
   id: string;
   title: string;
   description: string;
+  location?: string;
   startDate: string;
   endDate: string;
   dates: string[];
@@ -61,6 +65,14 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // 모임 장소/설명 수정 모달 상태
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editDescription, setEditDescription] = useState('');
+  const [editLocation, setEditLocation] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [editError, setEditError] = useState('');
+  const [updatingDetails, setUpdatingDetails] = useState(false);
 
   // 선택된 날짜 상세 팝업 상태
   const [activeDateSummary, setActiveDateSummary] = useState<DateSummary | null>(null);
@@ -167,6 +179,47 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
     }
   };
 
+  const handleOpenEditModal = () => {
+    if (event) {
+      setEditDescription(event.description || '');
+      setEditLocation(event.location || '');
+      setEditPassword('');
+      setEditError('');
+      setShowEditModal(true);
+    }
+  };
+
+  const handleUpdateDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEditError('');
+    setUpdatingDetails(true);
+
+    try {
+      const res = await fetch(`/api/events/${eventId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description: editDescription,
+          location: editLocation,
+          password: editPassword,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || '수정 실패');
+      }
+
+      await fetchEvent();
+      setShowEditModal(false);
+      alert('모임 정보가 성공적으로 업데이트되었습니다!');
+    } catch (err: any) {
+      setEditError(err.message);
+    } finally {
+      setUpdatingDetails(false);
+    }
+  };
+
   const handleDeleteEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     setDeleteError('');
@@ -248,6 +301,14 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
 
           <div className="flex items-center gap-2">
             <button
+              onClick={handleOpenEditModal}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-xs font-semibold transition cursor-pointer"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>장소/설명 수정</span>
+            </button>
+
+            <button
               onClick={handleCopyLink}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-xs font-semibold transition cursor-pointer"
             >
@@ -278,6 +339,49 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
           </div>
           {event.description && (
             <p className="text-sm text-zinc-600 dark:text-zinc-400">{event.description}</p>
+          )}
+
+          {/* 📍 확정된 모임 장소 및 지도 바로가기 버튼 */}
+          {event.location ? (
+            <div className="pt-2 pb-1 border-t border-zinc-100 dark:border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-blue-50/60 dark:bg-blue-950/30 p-3 rounded-xl border border-blue-100 dark:border-blue-900/40">
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-rose-500 shrink-0" />
+                <div className="text-xs">
+                  <span className="font-semibold text-zinc-500 dark:text-zinc-400 mr-1.5">모임 장소:</span>
+                  <span className="font-bold text-zinc-800 dark:text-zinc-200">{event.location}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={`https://map.naver.com/p/search/${encodeURIComponent(event.location)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#03C75A] text-white text-[11px] font-bold hover:brightness-105 transition"
+                >
+                  <span>네이버 지도</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 text-[11px] font-bold hover:bg-zinc-50 transition"
+                >
+                  <span>구글 지도</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            </div>
+          ) : (
+            <div className="pt-1">
+              <button
+                onClick={handleOpenEditModal}
+                className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+              >
+                <MapPin className="w-3.5 h-3.5" />
+                <span>장소가 결정되었나요? 모임 장소 등록하기</span>
+              </button>
+            </div>
           )}
           <div className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400 pt-1">
             <CalendarIcon className="w-3.5 h-3.5" />
@@ -623,6 +727,86 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
         {/* 중간 또는 하단 광고 슬롯 */}
         <AdBanner slotId="bottom-event-ad" format="horizontal" />
       </div>
+
+      {/* 모임 정보(설명/장소) 수정 모달 */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4">
+            <div className="flex items-center gap-2 text-emerald-600">
+              <Edit3 className="w-5 h-5" />
+              <h3 className="font-bold text-base">모임 정보 및 장소 수정</h3>
+            </div>
+            <p className="text-xs text-zinc-500">
+              확정된 모임 장소나 안내 사항을 업데이트할 수 있습니다. 방 생성 시 설정한 비밀번호가 필요합니다.
+            </p>
+
+            {editError && (
+              <div className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-950/40 p-2.5 rounded-lg border border-rose-200 dark:border-rose-900/50">
+                {editError}
+              </div>
+            )}
+
+            <form onSubmit={handleUpdateDetails} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
+                  모임 장소 (네이버/구글 지도 검색어)
+                </label>
+                <input
+                  type="text"
+                  placeholder="예: 강남역 11번 출구 고기집, 홍대입구역 스타벅스"
+                  value={editLocation}
+                  onChange={(e) => setEditLocation(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-xl dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
+                  모임 설명 / 공지사항
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="예: 7시까지 강남역 11번 출구 앞에서 만나요!"
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-xl dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
+                  방장 비밀번호 <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  placeholder="방 생성 시 설정한 비밀번호"
+                  value={editPassword}
+                  onChange={(e) => setEditPassword(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border rounded-xl dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="flex-1 py-2 rounded-xl text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 text-zinc-700 dark:text-zinc-300 transition cursor-pointer"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  disabled={updatingDetails}
+                  className="flex-1 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition cursor-pointer disabled:opacity-50"
+                >
+                  {updatingDetails ? '수정 중...' : '수정 완료'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* 모임방 삭제 비밀번호 확인 모달 */}
       {showDeleteModal && (
