@@ -9,7 +9,7 @@ export async function POST(
     await initDb();
     const { id } = await params;
     const body = await request.json();
-    const { participantName, availableDates, maybeDates } = body;
+    const { participantName, pin, availableDates, maybeDates } = body;
 
     if (!participantName || !participantName.trim()) {
       return NextResponse.json(
@@ -18,13 +18,25 @@ export async function POST(
       );
     }
 
-    const vote = await submitVote(id, {
+    if (!pin || !pin.trim()) {
+      return NextResponse.json(
+        { error: '본인 확인용 4자리 비밀번호(PIN)를 입력해주세요.' },
+        { status: 400 }
+      );
+    }
+
+    const res = await submitVote(id, {
       participantName,
+      pin,
       availableDates: availableDates || [],
       maybeDates: maybeDates || [],
     });
 
-    return NextResponse.json({ success: true, vote });
+    if (!res.success) {
+      return NextResponse.json({ error: res.error }, { status: 403 });
+    }
+
+    return NextResponse.json({ success: true, vote: res.vote });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

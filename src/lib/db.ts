@@ -24,6 +24,7 @@ export interface CreateEventInput {
 
 export interface SubmitVoteInput {
   participantName: string;
+  pin: string;
   availableDates: string[];
   maybeDates?: string[];
 }
@@ -67,12 +68,20 @@ export async function initDb(): Promise<void> {
       id TEXT PRIMARY KEY,
       eventId TEXT NOT NULL,
       participantName TEXT NOT NULL,
+      pinHash TEXT,
       availableDates TEXT NOT NULL,
       maybeDates TEXT NOT NULL,
       createdAt TEXT NOT NULL,
       FOREIGN KEY(eventId) REFERENCES events(id) ON DELETE CASCADE
     );
   `);
+
+  // 기존 테이블 호환성을 위해 pinHash 컬럼 확인 및 추가 시도
+  try {
+    await db.execute(`ALTER TABLE votes ADD COLUMN pinHash TEXT;`);
+  } catch {
+    // 이미 존재하는 경우 무시
+  }
 }
 
 function generateDateRange(startStr: string, endStr: string): string[] {
@@ -160,46 +169,81 @@ export async function getEventById(id: string): Promise<EventData | null> {
 export async function submitVote(
   eventId: string,
   input: SubmitVoteInput
-): Promise<ParticipantVote> {
+): Promise<{ success: boolean; vote?: ParticipantVote; error?: string }> {
   const db = getDb();
-  const existing = await db.execute({
-    sql: `SELECT id FROM votes WHERE eventId = ? AND participantName = ?`,
-    args: [eventId, input.participantName.trim()],
-  });
+  const trimmedName = input.participantName.trim();
+  const pin = input.pin ? input.pin.trim() : '';
 
-  const voteId = existing.rows.length > 0 
-    ? String(existing.rows[0].id) 
-    : Math.random().toString(36).substring(2, 10);
+  if (!pin) {
+    return { success: false, error: '본인 확인용 4자리 비밀번호(PIN)를 입력해주세요.' };
+  }
+
+  const existingRes = await db.execute({
+    sql: `SELECT id, pinHash FROM votes WHERE eventId = ? AND participantName = ?`,
+    args: [eventId, trimmedName],
+  });
 
   const availableDatesJson = JSON.stringify(input.availableDates);
   const maybeDatesJson = JSON.stringify(input.maybeDates || []);
   const now = new Date().toISOString();
 
-  if (existing.rows.length > 0) {
+  if (existingRes.rows.length > 0) {
+    const existingRow = existingRes.rows[0];
+    const storedPinHash = existingRow.pinHash ? String(existingRow.pinHash) : null;
+
+    if (storedPinHash) {
+      const isMatch = await bcrypt.compare(pin, storedPinHash);
+      if (!isMatch) {
+        return {
+          success: false,
+          error: '이미 등록된 이름입니다. 해당 작성자의 비밀번호(PIN)와 일치하지 않습니다.',
+        };
+      }
+    }
+
+    const voteId = String(existingRow.id);
     await db.execute({
       sql: `UPDATE votes SET availableDates = ?, maybeDates = ?, createdAt = ? WHERE id = ?`,
       args: [availableDatesJson, maybeDatesJson, now, voteId],
     });
-  } else {
-    await db.execute({
-      sql: `INSERT INTO votes (id, eventId, participantName, availableDates, maybeDates, createdAt)
-            VALUES (?, ?, ?, ?, ?, ?)`,
-      args: [
-        voteId,
-        eventId,
-        input.participantName.trim(),
-        availableDatesJson,
-        maybeDatesJson,
-        now,
-      ],
-    });
+
+    return {
+      success: true,
+      vote: {
+        id: voteId,
+        participantName: trimmedName,
+        availableDates: input.availableDates,
+        maybeDates: input.maybeDates || [],
+      },
+    };
   }
 
+  // 신규 등록
+  const voteId = Math.random().toString(36).substring(2, 10);
+  const pinHash = await bcrypt.hash(pin, 10);
+
+  await db.execute({
+    sql: `INSERT INTO votes (id, eventId, participantName, pinHash, availableDates, maybeDates, createdAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      voteId,
+      eventId,
+      trimmedName,
+      pinHash,
+      availableDatesJson,
+      maybeDatesJson,
+      now,
+    ],
+  });
+
   return {
-    id: voteId,
-    participantName: input.participantName.trim(),
-    availableDates: input.availableDates,
-    maybeDates: input.maybeDates || [],
+    success: true,
+    vote: {
+      id: voteId,
+      participantName: trimmedName,
+      availableDates: input.availableDates,
+      maybeDates: input.maybeDates || [],
+    },
   };
 }
 

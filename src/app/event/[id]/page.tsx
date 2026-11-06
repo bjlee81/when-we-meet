@@ -43,9 +43,11 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
 
   // 투표 폼 상태
   const [myParticipantName, setMyParticipantName] = useState('');
+  const [pin, setPin] = useState('');
   const [selectedAvailable, setSelectedAvailable] = useState<string[]>([]);
   const [selectedMaybe, setSelectedMaybe] = useState<string[]>([]);
   const [submittingVote, setSubmittingVote] = useState(false);
+  const [voteError, setVoteError] = useState('');
 
   // 모달 및 알림 상태
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -73,11 +75,11 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
 
   useEffect(() => {
     fetchEvent();
-    // 로컬 스토리지에서 지난 닉네임 복원 시도
+    // 로컬 스토리지에서 지난 닉네임 및 PIN 복원 시도
     const savedName = localStorage.getItem(`wwm_user_${eventId}`);
-    if (savedName) {
-      setMyParticipantName(savedName);
-    }
+    const savedPin = localStorage.getItem(`wwm_pin_${eventId}`);
+    if (savedName) setMyParticipantName(savedName);
+    if (savedPin) setPin(savedPin);
   }, [eventId]);
 
   // 참여자 이름 선택/입력 시 기존 투표 자동 로딩
@@ -106,8 +108,14 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
 
   const handleVoteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setVoteError('');
+
     if (!myParticipantName.trim()) {
-      alert('참여자 이름을 입력해주세요.');
+      setVoteError('참여자 이름을 입력해주세요.');
+      return;
+    }
+    if (!pin || pin.trim().length < 4) {
+      setVoteError('본인 확인 및 수정 방지용 4자리 비밀번호(PIN)를 입력해주세요.');
       return;
     }
 
@@ -118,6 +126,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           participantName: myParticipantName.trim(),
+          pin: pin.trim(),
           availableDates: selectedAvailable,
           maybeDates: selectedMaybe,
         }),
@@ -127,10 +136,11 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
       if (!res.ok) throw new Error(data.error);
 
       localStorage.setItem(`wwm_user_${eventId}`, myParticipantName.trim());
+      localStorage.setItem(`wwm_pin_${eventId}`, pin.trim());
       await fetchEvent();
-      alert('투표가 성공적으로 저장되었습니다!');
+      alert('일정이 성공적으로 저장되었습니다!');
     } catch (err: any) {
-      alert(err.message);
+      setVoteError(err.message);
     } finally {
       setSubmittingVote(false);
     }
@@ -287,18 +297,45 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
           </div>
 
           <form onSubmit={handleVoteSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-1">
-                내 닉네임 / 이름 <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                placeholder="예: 홍길동 (이름을 입력하면 기존 투표가 불러와집니다)"
-                value={myParticipantName}
-                onChange={(e) => setMyParticipantName(e.target.value)}
-                required
-                className="w-full px-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-              />
+            {voteError && (
+              <div className="flex items-center gap-2 text-xs text-rose-600 bg-rose-50 dark:bg-rose-950/40 p-3 rounded-lg border border-rose-200 dark:border-rose-900/50">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{voteError}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-1">
+                  내 닉네임 / 이름 <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="예: 홍길동"
+                  value={myParticipantName}
+                  onChange={(e) => setMyParticipantName(e.target.value)}
+                  required
+                  className="w-full px-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-1 flex items-center justify-between">
+                  <span>수정 방지용 비밀번호 (PIN) <span className="text-rose-500">*</span></span>
+                  <span className="text-[10px] text-zinc-600 dark:text-zinc-400 font-normal">4자리 숫자 등</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="password"
+                    placeholder="4자리 이상 (다른 사람 수정 방지)"
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value)}
+                    required
+                    className="w-full pl-9 pr-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                  <Lock className="w-4 h-4 text-zinc-400 absolute left-3 top-2.5" />
+                </div>
+              </div>
             </div>
 
             {/* 날짜 선택 그리드 */}
