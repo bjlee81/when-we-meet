@@ -122,7 +122,7 @@ export default function Home() {
               </label>
               <input
                 type="text"
-                placeholder="예: 맛있는 저녁 식사 후 간단한 2차! (모임 장소는 나중에 확정 가능)"
+                placeholder="예: 동기 연말모임 (모임 장소는 나중에 확정 가능)"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/50 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"

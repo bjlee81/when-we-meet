@@ -5,7 +5,11 @@ import {
   updateEventDetails,
   deleteEventWithPassword, 
   submitVote, 
-  initDb 
+  initDb,
+  getAllEventsForAdmin,
+  adminForceDeleteEvent,
+  getSiteSettings,
+  updateSiteSettings
 } from '@/lib/db';
 
 describe('Database / Storage Operations', () => {
@@ -148,5 +152,31 @@ describe('Database / Storage Operations', () => {
     const updated = await getEventById(event.id);
     expect(updated?.description).toBe('강남역 11번 출구 맛집 7시 모임 확정!');
     expect(updated?.location).toBe('강남역 11번출구');
+  });
+
+  it('manages master admin settings and all events list', async () => {
+    // 1. 전역 광고 설정 저장 및 조회
+    await updateSiteSettings({
+      ad_enabled: 'true',
+      ad_kakao_unit_id: 'DAN-TEST1234',
+      ad_google_client_id: 'ca-pub-99999999',
+    });
+
+    const settings = await getSiteSettings();
+    expect(settings.ad_enabled).toBe('true');
+    expect(settings.ad_kakao_unit_id).toBe('DAN-TEST1234');
+    expect(settings.ad_google_client_id).toBe('ca-pub-99999999');
+
+    // 2. 관리자용 전체 모임 조회
+    const all = await getAllEventsForAdmin();
+    expect(all.length).toBeGreaterThan(0);
+
+    // 3. 관리자 마스터 강제 삭제
+    const targetId = all[0].id;
+    const deleted = await adminForceDeleteEvent(targetId);
+    expect(deleted).toBe(true);
+
+    const checked = await getEventById(targetId);
+    expect(checked).toBeNull();
   });
 });

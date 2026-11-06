@@ -92,6 +92,13 @@ export async function initDb(): Promise<void> {
     );
   `);
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+  `);
+
   // 기존 테이블 호환성을 위해 컬럼 확인 및 추가 시도
   try {
     await db.execute(`ALTER TABLE votes ADD COLUMN pinHash TEXT;`);
@@ -356,4 +363,64 @@ export async function deleteEventWithPassword(
   });
 
   return { success: true };
+}
+
+// ================= 전체 관리자(Admin) 전용 기능 =================
+
+export async function getAllEventsForAdmin(): Promise<any[]> {
+  const db = getDb();
+  const eventsRes = await db.execute(`
+    SELECT e.*, COUNT(v.id) as participantCount 
+    FROM events e 
+    LEFT JOIN votes v ON e.id = v.eventId 
+    GROUP BY e.id 
+    ORDER BY e.createdAt DESC
+  `);
+
+  return eventsRes.rows.map((r) => ({
+    id: String(r.id),
+    title: String(r.title),
+    description: String(r.description || ''),
+    location: String(r.location || ''),
+    startDate: String(r.startDate),
+    endDate: String(r.endDate),
+    createdAt: String(r.createdAt),
+    participantCount: Number(r.participantCount || 0),
+  }));
+}
+
+export async function adminForceDeleteEvent(eventId: string): Promise<boolean> {
+  const db = getDb();
+  await db.execute({ sql: `DELETE FROM votes WHERE eventId = ?`, args: [eventId] });
+  await db.execute({ sql: `DELETE FROM events WHERE id = ?`, args: [eventId] });
+  return true;
+}
+
+export async function getSiteSettings(): Promise<Record<string, string>> {
+  const db = getDb();
+  const res = await db.execute(`SELECT * FROM settings`);
+  const settings: Record<string, string> = {
+    ad_enabled: 'false',
+    ad_google_client_id: '',
+    ad_google_slot_id: '',
+    ad_kakao_unit_id: '',
+    ad_custom_html: '',
+  };
+  for (const row of res.rows) {
+    settings[String(row.key)] = String(row.value);
+  }
+  return settings;
+}
+
+export async function updateSiteSettings(
+  newSettings: Record<string, string>
+): Promise<Record<string, string>> {
+  const db = getDb();
+  for (const [key, val] of Object.entries(newSettings)) {
+    await db.execute({
+      sql: `INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?`,
+      args: [key, String(val), String(val)],
+    });
+  }
+  return getSiteSettings();
 }
