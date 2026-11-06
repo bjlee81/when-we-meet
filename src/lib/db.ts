@@ -42,9 +42,10 @@ export interface SubmitVoteInput {
 let dbClient: Client | null = null;
 
 export function getDb(): Client {
+  const url = process.env.TURSO_DATABASE_URL || 'file:local.db';
+  const authToken = process.env.TURSO_AUTH_TOKEN;
+  
   if (!dbClient) {
-    const url = process.env.TURSO_DATABASE_URL || 'file:local.db';
-    const authToken = process.env.TURSO_AUTH_TOKEN;
     dbClient = createClient({
       url,
       authToken,
