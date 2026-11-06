@@ -9,7 +9,8 @@ import {
   getAllEventsForAdmin,
   adminForceDeleteEvent,
   getSiteSettings,
-  updateSiteSettings
+  updateSiteSettings,
+  cleanupExpiredEvents
 } from '@/lib/db';
 
 describe('Database / Storage Operations', () => {
@@ -178,5 +179,38 @@ describe('Database / Storage Operations', () => {
 
     const checked = await getEventById(targetId);
     expect(checked).toBeNull();
+  });
+
+  it('automatically cleans up events past end date and inactive zero-participant rooms', async () => {
+    // 1. 이미 지난 과거 일정 생성 (종료일: 2020-01-01)
+    const oldEvent = await createEvent({
+      title: '과거 지난 모임',
+      description: '옛날 모임',
+      startDate: '2019-12-25',
+      endDate: '2020-01-01',
+      password: 'pass',
+    });
+
+    // 2. 미래의 정상 일정 생성 (종료일: 2030-01-01)
+    const futureEvent = await createEvent({
+      title: '미래 모임',
+      description: '앞으로 있을 모임',
+      startDate: '2029-12-25',
+      endDate: '2030-01-01',
+      password: 'pass',
+    });
+
+    // 3. 만료 정리 함수 실행 (기준일: 2026-11-06)
+    const cleanupResult = await cleanupExpiredEvents('2026-11-06');
+    expect(cleanupResult.deletedCount).toBeGreaterThanOrEqual(1);
+
+    // 과거 일정은 삭제되었어야 함
+    const checkOld = await getEventById(oldEvent.id);
+    expect(checkOld).toBeNull();
+
+    // 미래 일정은 유지되어야 함
+    const checkFuture = await getEventById(futureEvent.id);
+    expect(checkFuture).not.toBeNull();
+    expect(checkFuture?.title).toBe('미래 모임');
   });
 });

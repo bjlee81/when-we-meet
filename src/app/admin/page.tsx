@@ -312,14 +312,39 @@ export default function AdminPage() {
         {/* 탭 2: 전체 모임방 목록 */}
         {tab === 'events' && (
           <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-6 space-y-4">
-            <div className="border-b border-zinc-800 pb-3">
-              <h2 className="text-base font-bold flex items-center gap-2 text-blue-400">
-                <Calendar className="w-4 h-4" />
-                <span>현재 개설된 모임 목록 총괄</span>
-              </h2>
-              <p className="text-xs text-zinc-400 mt-1">
-                불필요한 테스트 방이나 관리 대상 방을 마스터 권한으로 즉시 삭제할 수 있습니다.
-              </p>
+            <div className="border-b border-zinc-800 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h2 className="text-base font-bold flex items-center gap-2 text-blue-400">
+                  <Calendar className="w-4 h-4" />
+                  <span>현재 개설된 모임 목록 총괄</span>
+                </h2>
+                <p className="text-xs text-zinc-400 mt-1">
+                  모임 목록을 확인하고, 만료되었거나 불필요한 방을 즉시 개별/일괄 삭제할 수 있습니다.
+                </p>
+              </div>
+
+              <button
+                onClick={async () => {
+                  if (!confirm('기간이 지난 모임 및 14일 이상 참여자가 없는 방치 모임을 모두 정리하시겠습니까?')) return;
+                  try {
+                    const res = await fetch('/api/admin/events', {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ password }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error);
+                    setEvents(data.events || []);
+                    alert(`총 ${data.deletedCount}개의 만료/방치 모임이 정리되었습니다.`);
+                  } catch (e: any) {
+                    alert(e.message);
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-800 text-indigo-300 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer self-start sm:self-auto"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>만료/방치 모임 일괄 정리</span>
+              </button>
             </div>
 
             <div className="space-y-3">

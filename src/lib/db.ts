@@ -425,3 +425,38 @@ export async function updateSiteSettings(
   }
   return getSiteSettings();
 }
+
+export async function cleanupExpiredEvents(
+  todayStr?: string
+): Promise<{ deletedCount: number; deletedIds: string[] }> {
+  const db = getDb();
+  const today = todayStr || new Date().toISOString().split('T')[0];
+
+  // 14일 전 날짜 (ISO 문자열)
+  const fourteenDaysAgo = new Date();
+  fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+  const fourteenDaysAgoStr = fourteenDaysAgo.toISOString();
+
+  // 1. 후보 종료일(endDate)이 오늘보다 지난 모임
+  // 2. 또는 생성된 지 14일 이상 지났는데 참여자(votes)가 0명인 모임
+  const targetRes = await db.execute({
+    sql: `
+      SELECT e.id 
+      FROM events e 
+      LEFT JOIN votes v ON e.id = v.eventId 
+      GROUP BY e.id 
+      HAVING e.endDate < ? 
+         OR (e.createdAt < ? AND COUNT(v.id) = 0)
+    `,
+    args: [today, fourteenDaysAgoStr],
+  });
+
+  const deletedIds = targetRes.rows.map((r) => String(r.id));
+
+  for (const id of deletedIds) {
+    await db.execute({ sql: `DELETE FROM votes WHERE eventId = ?`, args: [id] });
+    await db.execute({ sql: `DELETE FROM events WHERE id = ?`, args: [id] });
+  }
+
+  return { deletedCount: deletedIds.length, deletedIds };
+}
