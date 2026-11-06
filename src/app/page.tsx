@@ -44,10 +44,13 @@ export default function Home() {
     try {
       const res = await fetch('/api/events', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify({
-          title,
-          description,
+          title: title.trim(),
+          description: description.trim(),
           startDate,
           endDate,
           password,
@@ -59,9 +62,15 @@ export default function Home() {
         throw new Error(data.error || '모임 생성 실패');
       }
 
-      router.push(`/event/${data.event.id}`);
+      // 모바일 브라우저 호환성을 위한 이동 (router.push + fallback window.location)
+      if (data && data.event && data.event.id) {
+        window.location.href = `/event/${data.event.id}`;
+      } else {
+        throw new Error('생성된 모임 정보를 확인할 수 없습니다.');
+      }
     } catch (err: any) {
-      setError(err.message);
+      console.error('Create error:', err);
+      setError(err?.message || '네트워크 연결 오류가 발생했습니다.');
     } finally {
       setLoading(false);
     }
