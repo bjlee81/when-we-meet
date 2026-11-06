@@ -46,17 +46,33 @@ export const AdBanner: React.FC<AdBannerProps> = ({
       .catch((e) => console.log('Ad settings load skipped:', e));
   }, []);
 
-  // 2. 구글 애드센스 활성화된 경우 광고 push
+  // 2. 구글 애드센스 활성화된 경우 광고 push 및 스크립트 동적 로드
   useEffect(() => {
     if (adConfig.ad_google_slot_id && typeof window !== 'undefined') {
-      try {
-        const adsbygoogle = (window as any).adsbygoogle || [];
-        adsbygoogle.push({});
-      } catch (e) {
-        console.error('AdSense push error:', e);
+      const clientId = adConfig.ad_google_client_id || process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID;
+      
+      // 애드센스 메인 스크립트가 아직 없으면 동적으로 주입
+      const existingScript = document.querySelector('script[src*="adsbygoogle.js"]');
+      if (!existingScript && clientId) {
+        const script = document.createElement('script');
+        script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${clientId}`;
+        script.async = true;
+        script.crossOrigin = 'anonymous';
+        document.head.appendChild(script);
       }
+
+      const timer = setTimeout(() => {
+        try {
+          const adsbygoogle = (window as any).adsbygoogle || [];
+          adsbygoogle.push({});
+        } catch (e) {
+          console.error('AdSense push error:', e);
+        }
+      }, 300);
+
+      return () => clearTimeout(timer);
     }
-  }, [adConfig.ad_google_slot_id]);
+  }, [adConfig.ad_google_slot_id, adConfig.ad_google_client_id]);
 
   // 카카오 애드핏 연동
   if (adConfig.ad_kakao_unit_id) {
