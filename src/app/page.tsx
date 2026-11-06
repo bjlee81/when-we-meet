@@ -58,11 +58,11 @@ export default function Home() {
       });
 
       const data = await res.json();
-      if (!res.ok) {
+      if (!res.ok || !data.success) {
         throw new Error(data.error || '모임 생성 실패');
       }
 
-      // 모바일 브라우저 호환성을 위한 이동 (router.push + fallback window.location)
+      // 모바일 브라우저 호환성을 위한 이동
       if (data && data.event && data.event.id) {
         window.location.href = `/event/${data.event.id}`;
       } else {
