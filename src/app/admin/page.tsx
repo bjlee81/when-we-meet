@@ -150,12 +150,12 @@ export default function AdminPage() {
               <div className="relative">
                 <input
                   type="password"
-                  placeholder="비밀번호 입력 (기본값: admin1234)"
+                  placeholder="관리자 비밀번호를 입력하세요"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   autoFocus
-                  className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-zinc-900 border border-zinc-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none text-white"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-zinc-900 border border-zinc-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none text-white placeholder:text-zinc-500"
                 />
                 <Lock className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
               </div>
