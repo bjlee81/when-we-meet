@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { initDb, createEvent } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: Request) {
   try {
     await initDb();
