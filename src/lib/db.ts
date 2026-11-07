@@ -220,6 +220,14 @@ export async function submitVote(
     return { success: false, error: '본인 인증을 위한 기기 토큰 또는 비밀번호(PIN)가 필요합니다.' };
   }
 
+  const eventCheck = await db.execute({
+    sql: `SELECT id FROM events WHERE id = ?`,
+    args: [eventId],
+  });
+  if (eventCheck.rows.length === 0) {
+    return { success: false, error: '존재하지 않는 모임입니다.' };
+  }
+
   const existingRes = await db.execute({
     sql: `SELECT id, pinHash, deviceToken FROM votes WHERE eventId = ? AND participantName = ?`,
     args: [eventId, trimmedName],

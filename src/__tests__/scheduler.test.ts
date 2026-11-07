@@ -73,4 +73,90 @@ describe('Scheduler Logic', () => {
     expect(grid[5]).toBe('2026-11-14'); // Saturday
     expect(grid[6]).toBe('2026-11-15'); // Sunday
   });
+
+  describe('Edge Cases', () => {
+    it('returns empty array from findBestDates when all scores are 0', () => {
+      const zeroVotes: ParticipantVote[] = [
+        {
+          id: 'v1',
+          participantName: '바쁜사람',
+          availableDates: [],
+          maybeDates: [],
+        },
+      ];
+      const heatmap = calculateHeatmap(dates, zeroVotes);
+      const best = findBestDates(heatmap);
+      expect(best).toEqual([]);
+      expect(heatmap['2026-11-10'].unavailableNames).toEqual(['바쁜사람']);
+    });
+
+    it('prioritizes higher availableCount when scores are tied', () => {
+      // 2026-11-10: 2 available = score 2.0
+      // 2026-11-11: 1 available + 2 maybe = score 1.0 + 1.0 = 2.0
+      const tieVotes: ParticipantVote[] = [
+        {
+          id: '1',
+          participantName: 'UserA',
+          availableDates: ['2026-11-10', '2026-11-11'],
+          maybeDates: [],
+        },
+        {
+          id: '2',
+          participantName: 'UserB',
+          availableDates: ['2026-11-10'],
+          maybeDates: ['2026-11-11'],
+        },
+        {
+          id: '3',
+          participantName: 'UserC',
+          availableDates: [],
+          maybeDates: ['2026-11-11'],
+        },
+      ];
+
+      const heatmap = calculateHeatmap(['2026-11-10', '2026-11-11'], tieVotes);
+      expect(heatmap['2026-11-10'].score).toBe(2);
+      expect(heatmap['2026-11-11'].score).toBe(2);
+
+      const best = findBestDates(heatmap);
+      expect(best.length).toBe(2);
+      // availableCount가 2인 2026-11-10이 1순위여야 함
+      expect(best[0].date).toBe('2026-11-10');
+      expect(best[0].availableCount).toBe(2);
+      expect(best[1].date).toBe('2026-11-11');
+      expect(best[1].availableCount).toBe(1);
+    });
+
+    it('safely handles empty votes array without runtime exceptions', () => {
+      const heatmap = calculateHeatmap(dates, []);
+      expect(Object.keys(heatmap)).toEqual(dates);
+      for (const d of dates) {
+        expect(heatmap[d].availableCount).toBe(0);
+        expect(heatmap[d].maybeCount).toBe(0);
+        expect(heatmap[d].score).toBe(0);
+        expect(heatmap[d].availableNames).toEqual([]);
+        expect(heatmap[d].unavailableNames).toEqual([]);
+      }
+      expect(findBestDates(heatmap)).toEqual([]);
+    });
+
+    it('handles duplicate dates in single user vote without inflating participant count', () => {
+      const duplicateVote: ParticipantVote[] = [
+        {
+          id: 'v1',
+          participantName: '중복선택자',
+          availableDates: ['2026-11-10', '2026-11-10'],
+          maybeDates: ['2026-11-10'],
+        },
+      ];
+      const heatmap = calculateHeatmap(['2026-11-10'], duplicateVote);
+      expect(heatmap['2026-11-10'].availableCount).toBe(1);
+      expect(heatmap['2026-11-10'].availableNames).toEqual(['중복선택자']);
+      expect(heatmap['2026-11-10'].score).toBe(1);
+    });
+
+    it('handles empty dates array in generateWeeklyCalendarGrid', () => {
+      expect(generateWeeklyCalendarGrid([])).toEqual([]);
+    });
+  });
 });

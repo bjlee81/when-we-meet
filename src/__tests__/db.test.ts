@@ -268,4 +268,155 @@ describe('Database / Storage Operations', () => {
     });
     expect(vote1Update.success).toBe(true);
   });
+
+  describe('Edge Cases & Defensive Behaviors', () => {
+    it('rejects voting for a non-existent event', async () => {
+      const res = await submitVote('non_existent_id_9999', {
+        participantName: '누구세요',
+        pin: '1234',
+        availableDates: ['2026-11-20'],
+      });
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/존재하지 않는/);
+    });
+
+    it('rejects voting when neither pin nor deviceToken is provided', async () => {
+      const event = await createEvent({
+        title: '인증 누락 테스트',
+        startDate: '2026-11-20',
+        endDate: '2026-11-22',
+        password: 'pass',
+      });
+
+      const res = await submitVote(event.id, {
+        participantName: '철수',
+        availableDates: ['2026-11-20'],
+      });
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/기기 토큰 또는 비밀번호/);
+    });
+
+    it('handles participant names with surrounding whitespace and case sensitivity', async () => {
+      const event = await createEvent({
+        title: '이름 공백 테스트',
+        startDate: '2026-11-20',
+        endDate: '2026-11-22',
+        password: 'pass',
+      });
+
+      // 1. 앞뒤 공백이 포함된 이름으로 등록
+      const res1 = await submitVote(event.id, {
+        participantName: '   홍길동   ',
+        pin: '7777',
+        deviceToken: 'device-token-hong',
+        availableDates: ['2026-11-20'],
+      });
+      expect(res1.success).toBe(true);
+      expect(res1.vote?.participantName).toBe('홍길동');
+
+      // 2. 공백이 제거된 '홍길동'으로 동일 기기에서 수정 시도 -> 동일인으로 인증 성공해야 함
+      const resUpdate = await submitVote(event.id, {
+        participantName: '홍길동',
+        deviceToken: 'device-token-hong',
+        availableDates: ['2026-11-20', '2026-11-21'],
+      });
+      expect(resUpdate.success).toBe(true);
+
+      const retrieved = await getEventById(event.id);
+      expect(retrieved?.votes.length).toBe(1);
+      expect(retrieved?.votes[0].participantName).toBe('홍길동');
+      expect(retrieved?.votes[0].availableDates).toEqual(['2026-11-20', '2026-11-21']);
+    });
+
+    it('safely stores and retrieves names with emojis and special characters', async () => {
+      const event = await createEvent({
+        title: '이모지 테스트 모임 🎉',
+        description: '특수문자: <script>alert(1)</script> & "따옴표"',
+        location: '강남역 2번 출구 (스타벅스 ☕)',
+        startDate: '2026-11-25',
+        endDate: '2026-11-27',
+        password: 'pass',
+      });
+
+      const emojiName = '🎉김개발(Dev)🍕';
+      const voteRes = await submitVote(event.id, {
+        participantName: emojiName,
+        pin: '1234',
+        availableDates: ['2026-11-25'],
+        maybeDates: ['2026-11-26'],
+      });
+      expect(voteRes.success).toBe(true);
+
+      const retrieved = await getEventById(event.id);
+      expect(retrieved?.title).toBe('이모지 테스트 모임 🎉');
+      expect(retrieved?.location).toBe('강남역 2번 출구 (스타벅스 ☕)');
+      expect(retrieved?.votes[0].participantName).toBe(emojiName);
+    });
+
+    it('allows participant to vote with zero available dates (cannot attend)', async () => {
+      const event = await createEvent({
+        title: '불참자 테스트',
+        startDate: '2026-11-20',
+        endDate: '2026-11-21',
+        password: 'pass',
+      });
+
+      const res = await submitVote(event.id, {
+        participantName: '불참러',
+        pin: '0000',
+        availableDates: [],
+        maybeDates: [],
+      });
+      expect(res.success).toBe(true);
+
+      const retrieved = await getEventById(event.id);
+      expect(retrieved?.votes.length).toBe(1);
+      expect(retrieved?.votes[0].participantName).toBe('불참러');
+      expect(retrieved?.votes[0].availableDates).toEqual([]);
+      expect(retrieved?.votes[0].maybeDates).toEqual([]);
+    });
+
+    it('guarantees initDb idempotency when called multiple times consecutively', async () => {
+      // 연속으로 여러 번 호출해도 에러 없이 멱등성 유지
+      await expect(initDb()).resolves.not.toThrow();
+      await expect(initDb()).resolves.not.toThrow();
+      await expect(initDb()).resolves.not.toThrow();
+    });
+
+    it('preserves inactive room if it has at least one participant even after 14 days', async () => {
+      const db = getDb();
+      // 1. 20일 전에 생성되었으나 종료일은 아직 안 지난 모임
+      const twentyDaysAgo = new Date();
+      twentyDaysAgo.setDate(twentyDaysAgo.getDate() - 20);
+      const oldCreatedAt = twentyDaysAgo.toISOString();
+
+      const event = await createEvent({
+        title: '오래되었지만 참여자 있는 방',
+        startDate: '2026-12-01',
+        endDate: '2026-12-31',
+        password: 'pass',
+      });
+
+      // 강제로 createdAt을 20일 전으로 수정
+      await db.execute({
+        sql: `UPDATE events SET createdAt = ? WHERE id = ?`,
+        args: [oldCreatedAt, event.id],
+      });
+
+      // 2. 참여자 1명 등록
+      await submitVote(event.id, {
+        participantName: '참여자A',
+        pin: '1234',
+        availableDates: ['2026-12-01'],
+      });
+
+      // 3. 만료 정리 실행 (기준일 2026-11-07)
+      await cleanupExpiredEvents('2026-11-07');
+
+      // 참여자가 1명 있으므로 방치된 방으로 간주되지 않고 보존되어야 함!
+      const checked = await getEventById(event.id);
+      expect(checked).not.toBeNull();
+      expect(checked?.title).toBe('오래되었지만 참여자 있는 방');
+    });
+  });
 });
