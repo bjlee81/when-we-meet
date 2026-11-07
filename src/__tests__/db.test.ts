@@ -10,7 +10,8 @@ import {
   adminForceDeleteEvent,
   getSiteSettings,
   updateSiteSettings,
-  cleanupExpiredEvents
+  cleanupExpiredEvents,
+  getDb
 } from '@/lib/db';
 
 describe('Database / Storage Operations', () => {
@@ -212,5 +213,59 @@ describe('Database / Storage Operations', () => {
     const checkFuture = await getEventById(futureEvent.id);
     expect(checkFuture).not.toBeNull();
     expect(checkFuture?.title).toBe('미래 모임');
+  });
+
+  it('automatically adds createdAt column to votes table if missing and allows voting', async () => {
+    const db = getDb();
+    const event = await createEvent({
+      title: '컬럼 누락 마이그레이션 테스트',
+      description: '',
+      startDate: '2026-12-01',
+      endDate: '2026-12-05',
+      password: 'pass',
+    });
+
+    // 1. 구버전 스키마를 시뮬레이션: votes 테이블에서 createdAt 컬럼이 없는 상태로 재생성
+    await db.execute(`DROP TABLE IF EXISTS votes;`);
+    await db.execute(`
+      CREATE TABLE votes (
+        id TEXT PRIMARY KEY,
+        eventId TEXT NOT NULL,
+        participantName TEXT NOT NULL,
+        availableDates TEXT NOT NULL,
+        maybeDates TEXT NOT NULL,
+        FOREIGN KEY(eventId) REFERENCES events(id) ON DELETE CASCADE
+      );
+    `);
+
+    // 2. initDb() 호출 -> 누락된 createdAt, pinHash, deviceToken 컬럼이 자동 마이그레이션 되어야 함
+    await initDb();
+
+    // 3. 첫 번째 참여자가 투표 입력 -> 정상 성공해야 함
+    const vote1 = await submitVote(event.id, {
+      participantName: '참여자1',
+      deviceToken: 'token-user-1',
+      availableDates: ['2026-12-01'],
+      maybeDates: [],
+    });
+    expect(vote1.success).toBe(true);
+
+    // 4. 두 번째 참여자가 투표 입력 -> 'table votes has no column named createdAt' 에러 없이 성공해야 함
+    const vote2 = await submitVote(event.id, {
+      participantName: '참여자2',
+      deviceToken: 'token-user-2',
+      availableDates: ['2026-12-02'],
+      maybeDates: [],
+    });
+    expect(vote2.success).toBe(true);
+
+    // 5. 첫 번째 참여자가 투표 수정(UPDATE) -> 정상 작동해야 함
+    const vote1Update = await submitVote(event.id, {
+      participantName: '참여자1',
+      deviceToken: 'token-user-1',
+      availableDates: ['2026-12-01', '2026-12-03'],
+      maybeDates: [],
+    });
+    expect(vote1Update.success).toBe(true);
   });
 });

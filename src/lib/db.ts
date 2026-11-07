@@ -108,6 +108,18 @@ export async function initDb(): Promise<void> {
   try {
     await db.execute(`ALTER TABLE votes ADD COLUMN deviceToken TEXT;`);
   } catch {}
+
+  try {
+    await db.execute(`ALTER TABLE votes ADD COLUMN maybeDates TEXT DEFAULT '[]';`);
+  } catch {}
+
+  try {
+    await db.execute(`ALTER TABLE votes ADD COLUMN createdAt TEXT;`);
+  } catch {}
+
+  try {
+    await db.execute(`UPDATE votes SET createdAt = datetime('now') WHERE createdAt IS NULL OR createdAt = '';`);
+  } catch {}
 }
 
 function generateDateRange(startStr: string, endStr: string): string[] {
