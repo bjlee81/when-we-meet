@@ -269,6 +269,50 @@ describe('Database / Storage Operations', () => {
     expect(vote1Update.success).toBe(true);
   });
 
+  it('works against the exact production votes schema (pin column, nullable createdAt)', async () => {
+    const db = getDb();
+    const event = await createEvent({
+      title: '운영 스키마 재현',
+      startDate: '2026-12-10',
+      endDate: '2026-12-12',
+      password: 'pass',
+    });
+
+    await db.execute(`DROP TABLE IF EXISTS votes;`);
+    await db.execute(`
+      CREATE TABLE votes (
+        id TEXT PRIMARY KEY,
+        eventId TEXT NOT NULL,
+        participantName TEXT NOT NULL,
+        pin TEXT,
+        deviceToken TEXT,
+        availableDates TEXT NOT NULL,
+        maybeDates TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        pinHash TEXT,
+        createdAt TEXT,
+        CONSTRAINT fk_votes_eventId_events_id_fk FOREIGN KEY (eventId) REFERENCES events (id) ON DELETE CASCADE
+      );
+    `);
+    await initDb();
+
+    for (const name of ['참여자1', '참여자2']) {
+      const res = await submitVote(event.id, {
+        participantName: name,
+        deviceToken: `token-${name}`,
+        availableDates: ['2026-12-10'],
+      });
+      expect(res.success).toBe(true);
+    }
+    const upd = await submitVote(event.id, {
+      participantName: '참여자1',
+      deviceToken: 'token-참여자1',
+      availableDates: ['2026-12-11'],
+    });
+    expect(upd.success).toBe(true);
+    expect((await getEventById(event.id))?.votes.length).toBe(2);
+  });
+
   it('safely votes when votes table has updatedAt NOT NULL constraint', async () => {
     const db = getDb();
     const event = await createEvent({
