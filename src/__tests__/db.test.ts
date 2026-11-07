@@ -269,6 +269,63 @@ describe('Database / Storage Operations', () => {
     expect(vote1Update.success).toBe(true);
   });
 
+  it('safely votes when votes table has updatedAt NOT NULL constraint', async () => {
+    const db = getDb();
+    const event = await createEvent({
+      title: 'updatedAt NOT NULL 테스트',
+      startDate: '2026-12-10',
+      endDate: '2026-12-12',
+      password: 'pass',
+    });
+
+    // votes 테이블을 updatedAt NOT NULL 제약조건을 가진 형태로 재생성
+    await db.execute(`DROP TABLE IF EXISTS votes;`);
+    await db.execute(`
+      CREATE TABLE votes (
+        id TEXT PRIMARY KEY,
+        eventId TEXT NOT NULL,
+        participantName TEXT NOT NULL,
+        pinHash TEXT,
+        deviceToken TEXT,
+        availableDates TEXT NOT NULL,
+        maybeDates TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        FOREIGN KEY(eventId) REFERENCES events(id) ON DELETE CASCADE
+      );
+    `);
+
+    // initDb 호출
+    await initDb();
+
+    // 1. 첫 번째 참여자 등록 시 updatedAt NOT NULL 위반 없이 성공해야 함
+    const res1 = await submitVote(event.id, {
+      participantName: '참여자1',
+      deviceToken: 'dev-token-1',
+      availableDates: ['2026-12-10'],
+      maybeDates: [],
+    });
+    expect(res1.success).toBe(true);
+
+    // 2. 두 번째 참여자 등록
+    const res2 = await submitVote(event.id, {
+      participantName: '참여자2',
+      deviceToken: 'dev-token-2',
+      availableDates: ['2026-12-11'],
+      maybeDates: [],
+    });
+    expect(res2.success).toBe(true);
+
+    // 3. 참여자 1 투표 수정 시에도 정상 반영
+    const resUpdate = await submitVote(event.id, {
+      participantName: '참여자1',
+      deviceToken: 'dev-token-1',
+      availableDates: ['2026-12-10', '2026-12-12'],
+      maybeDates: [],
+    });
+    expect(resUpdate.success).toBe(true);
+  });
+
   describe('Edge Cases & Defensive Behaviors', () => {
     it('rejects voting for a non-existent event', async () => {
       const res = await submitVote('non_existent_id_9999', {

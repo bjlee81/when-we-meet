@@ -12,6 +12,7 @@ export interface EventData {
   dates: string[];
   passwordHash: string;
   createdAt: string;
+  updatedAt?: string;
   votes: ParticipantVote[];
 }
 
@@ -71,12 +72,17 @@ export async function initDb(): Promise<void> {
       endDate TEXT NOT NULL,
       dates TEXT NOT NULL,
       passwordHash TEXT NOT NULL,
-      createdAt TEXT NOT NULL
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT
     );
   `);
 
   try {
     await db.execute(`ALTER TABLE events ADD COLUMN location TEXT;`);
+  } catch {}
+
+  try {
+    await db.execute(`ALTER TABLE events ADD COLUMN updatedAt TEXT;`);
   } catch {}
 
   await db.execute(`
@@ -89,6 +95,7 @@ export async function initDb(): Promise<void> {
       availableDates TEXT NOT NULL,
       maybeDates TEXT NOT NULL,
       createdAt TEXT NOT NULL,
+      updatedAt TEXT,
       FOREIGN KEY(eventId) REFERENCES events(id) ON DELETE CASCADE
     );
   `);
@@ -118,7 +125,19 @@ export async function initDb(): Promise<void> {
   } catch {}
 
   try {
+    await db.execute(`ALTER TABLE votes ADD COLUMN updatedAt TEXT;`);
+  } catch {}
+
+  try {
     await db.execute(`UPDATE votes SET createdAt = datetime('now') WHERE createdAt IS NULL OR createdAt = '';`);
+  } catch {}
+
+  try {
+    await db.execute(`UPDATE votes SET updatedAt = COALESCE(createdAt, datetime('now')) WHERE updatedAt IS NULL OR updatedAt = '';`);
+  } catch {}
+
+  try {
+    await db.execute(`UPDATE events SET updatedAt = COALESCE(createdAt, datetime('now')) WHERE updatedAt IS NULL OR updatedAt = '';`);
   } catch {}
 }
 
@@ -139,11 +158,11 @@ export async function createEvent(input: CreateEventInput): Promise<EventData> {
   const id = Math.random().toString(36).substring(2, 10);
   const dates = generateDateRange(input.startDate, input.endDate);
   const passwordHash = await bcrypt.hash(input.password, 10);
-  const createdAt = new Date().toISOString();
+  const now = new Date().toISOString();
 
   await db.execute({
-    sql: `INSERT INTO events (id, title, description, location, startDate, endDate, dates, passwordHash, createdAt)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO events (id, title, description, location, startDate, endDate, dates, passwordHash, createdAt, updatedAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       id,
       input.title,
@@ -153,7 +172,8 @@ export async function createEvent(input: CreateEventInput): Promise<EventData> {
       input.endDate,
       JSON.stringify(dates),
       passwordHash,
-      createdAt,
+      now,
+      now,
     ],
   });
 
@@ -166,7 +186,8 @@ export async function createEvent(input: CreateEventInput): Promise<EventData> {
     endDate: input.endDate,
     dates,
     passwordHash,
-    createdAt,
+    createdAt: now,
+    updatedAt: now,
     votes: [],
   };
 }
@@ -203,6 +224,7 @@ export async function getEventById(id: string): Promise<EventData | null> {
     dates: JSON.parse(String(eventRow.dates)),
     passwordHash: String(eventRow.passwordHash),
     createdAt: String(eventRow.createdAt),
+    updatedAt: eventRow.updatedAt ? String(eventRow.updatedAt) : String(eventRow.createdAt),
     votes,
   };
 }
@@ -262,8 +284,8 @@ export async function submitVote(
 
     const voteId = String(existingRow.id);
     await db.execute({
-      sql: `UPDATE votes SET availableDates = ?, maybeDates = ?, createdAt = ? WHERE id = ?`,
-      args: [availableDatesJson, maybeDatesJson, now, voteId],
+      sql: `UPDATE votes SET availableDates = ?, maybeDates = ?, createdAt = COALESCE(createdAt, ?), updatedAt = ? WHERE id = ?`,
+      args: [availableDatesJson, maybeDatesJson, now, now, voteId],
     });
 
     return {
@@ -282,8 +304,8 @@ export async function submitVote(
   const pinHash = pin ? await bcrypt.hash(pin, 10) : null;
 
   await db.execute({
-    sql: `INSERT INTO votes (id, eventId, participantName, pinHash, deviceToken, availableDates, maybeDates, createdAt)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO votes (id, eventId, participantName, pinHash, deviceToken, availableDates, maybeDates, createdAt, updatedAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       voteId,
       eventId,
@@ -292,6 +314,7 @@ export async function submitVote(
       deviceToken || null,
       availableDatesJson,
       maybeDatesJson,
+      now,
       now,
     ],
   });
@@ -347,6 +370,12 @@ export async function updateEventDetails(
       args: [input.location, eventId],
     });
   }
+
+  const now = new Date().toISOString();
+  await db.execute({
+    sql: `UPDATE events SET updatedAt = ? WHERE id = ?`,
+    args: [now, eventId],
+  });
 
   const updated = await getEventById(eventId);
   return { success: true, event: updated || undefined };
