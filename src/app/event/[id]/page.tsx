@@ -18,10 +18,12 @@ import {
   MapPin,
   ExternalLink,
   Edit3,
-  CalendarCheck
+  CalendarCheck,
+  Download
 } from 'lucide-react';
 import { AdBanner } from '@/components/AdBanner';
 import { buildShareMessage } from '@/lib/share';
+import { generateGoogleCalendarUrl, downloadIcsFile } from '@/lib/calendar';
 import { 
   calculateHeatmap, 
   findBestDates, 
@@ -460,14 +462,56 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
 
         {/* ✅ 확정된 날짜 배너 */}
         {event.finalDate && (
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl p-4 flex items-center gap-3 shadow-md">
-            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-              <CalendarCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-xs font-bold uppercase tracking-wider opacity-90">날짜가 확정되었어요!</div>
-              <div className="text-lg font-bold mt-0.5">
-                {format(parseISO(event.finalDate), 'yyyy년 M월 d일 (EEE)', { locale: ko })}
+          <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white rounded-2xl p-5 shadow-lg space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                  <CalendarCheck className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wider text-blue-100">
+                    약속 날짜가 확정되었어요! 🎉
+                  </div>
+                  <div className="text-lg sm:text-xl font-extrabold mt-0.5">
+                    {format(parseISO(event.finalDate), 'yyyy년 M월 d일 (EEE)', { locale: ko })}
+                  </div>
+                </div>
+              </div>
+
+              {/* 📅 내 캘린더에 담기 버튼 그룹 */}
+              <div className="flex flex-wrap items-center gap-2 pt-1 sm:pt-0">
+                <a
+                  href={generateGoogleCalendarUrl({
+                    title: event.title,
+                    date: event.finalDate,
+                    description: event.description,
+                    location: event.location,
+                    eventUrl: typeof window !== 'undefined' ? window.location.href : '',
+                  })}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white text-zinc-900 hover:bg-blue-50 text-xs font-bold transition shadow-sm cursor-pointer"
+                >
+                  <span>Google 캘린더</span>
+                  <ExternalLink className="w-3.5 h-3.5 text-zinc-500" />
+                </a>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    downloadIcsFile({
+                      title: event.title,
+                      date: event.finalDate!,
+                      description: event.description,
+                      location: event.location,
+                      eventUrl: typeof window !== 'undefined' ? window.location.href : '',
+                    })
+                  }
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition backdrop-blur-sm cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Apple/기본 캘린더 (.ics)</span>
+                </button>
               </div>
             </div>
           </div>
