@@ -11,6 +11,7 @@ import {
   getSiteSettings,
   updateSiteSettings,
   cleanupExpiredEvents,
+  finalizeEventDate,
   getDb
 } from '@/lib/db';
 
@@ -368,6 +369,119 @@ describe('Database / Storage Operations', () => {
       maybeDates: [],
     });
     expect(resUpdate.success).toBe(true);
+  });
+
+  describe('Finalize date', () => {
+    const makeEvent = () =>
+      createEvent({
+        title: '확정 테스트',
+        startDate: '2026-12-20',
+        endDate: '2026-12-22',
+        password: 'hostpass',
+      });
+
+    it('has no finalDate by default', async () => {
+      const event = await makeEvent();
+      const got = await getEventById(event.id);
+      expect(got?.finalDate ?? null).toBeNull();
+    });
+
+    it('rejects finalizing with a wrong host password', async () => {
+      const event = await makeEvent();
+      const res = await finalizeEventDate(event.id, 'wrong', '2026-12-21');
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/비밀번호/);
+      expect((await getEventById(event.id))?.finalDate ?? null).toBeNull();
+    });
+
+    it('rejects a date outside the candidate dates', async () => {
+      const event = await makeEvent();
+      const res = await finalizeEventDate(event.id, 'hostpass', '2027-01-01');
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/후보/);
+    });
+
+    it('rejects a non-existent event', async () => {
+      const res = await finalizeEventDate('nope_9999', 'hostpass', '2026-12-21');
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/존재하지 않는/);
+    });
+
+    it('finalizes, allows changing the date, and persists it', async () => {
+      const event = await makeEvent();
+      const r1 = await finalizeEventDate(event.id, 'hostpass', '2026-12-21');
+      expect(r1.success).toBe(true);
+      expect(r1.event?.finalDate).toBe('2026-12-21');
+
+      const r2 = await finalizeEventDate(event.id, 'hostpass', '2026-12-22');
+      expect(r2.success).toBe(true);
+      expect((await getEventById(event.id))?.finalDate).toBe('2026-12-22');
+    });
+
+    it('blocks new votes and updates after finalization, then allows them after unfinalize', async () => {
+      const event = await makeEvent();
+      const first = await submitVote(event.id, {
+        participantName: '철수',
+        deviceToken: 'tok-1',
+        availableDates: ['2026-12-20'],
+      });
+      expect(first.success).toBe(true);
+
+      await finalizeEventDate(event.id, 'hostpass', '2026-12-20');
+
+      const newVote = await submitVote(event.id, {
+        participantName: '영희',
+        deviceToken: 'tok-2',
+        availableDates: ['2026-12-20'],
+      });
+      expect(newVote.success).toBe(false);
+      expect(newVote.error).toMatch(/확정/);
+
+      const update = await submitVote(event.id, {
+        participantName: '철수',
+        deviceToken: 'tok-1',
+        availableDates: ['2026-12-21'],
+      });
+      expect(update.success).toBe(false);
+      expect(update.error).toMatch(/확정/);
+
+      const un = await finalizeEventDate(event.id, 'hostpass', null);
+      expect(un.success).toBe(true);
+      expect((await getEventById(event.id))?.finalDate ?? null).toBeNull();
+
+      const again = await submitVote(event.id, {
+        participantName: '영희',
+        deviceToken: 'tok-2',
+        availableDates: ['2026-12-20'],
+      });
+      expect(again.success).toBe(true);
+    });
+
+    it('migrates an events table that lacks finalDate (production-like schema)', async () => {
+      const db = getDb();
+      await db.execute(`DROP TABLE IF EXISTS votes;`);
+      await db.execute(`DROP TABLE IF EXISTS events;`);
+      await db.execute(`
+        CREATE TABLE events (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          description TEXT,
+          location TEXT,
+          startDate TEXT NOT NULL,
+          endDate TEXT NOT NULL,
+          dates TEXT NOT NULL,
+          passwordHash TEXT NOT NULL,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT
+        );
+      `);
+      await initDb();
+
+      const event = await makeEvent();
+      const res = await finalizeEventDate(event.id, 'hostpass', '2026-12-21');
+      expect(res.success).toBe(true);
+      expect((await getEventById(event.id))?.finalDate).toBe('2026-12-21');
+    });
   });
 
   describe('Edge Cases & Defensive Behaviors', () => {

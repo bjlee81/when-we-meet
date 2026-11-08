@@ -13,6 +13,7 @@ export interface EventData {
   passwordHash: string;
   createdAt: string;
   updatedAt?: string;
+  finalDate?: string | null;
   votes: ParticipantVote[];
 }
 
@@ -73,7 +74,8 @@ export async function initDb(): Promise<void> {
       dates TEXT NOT NULL,
       passwordHash TEXT NOT NULL,
       createdAt TEXT NOT NULL,
-      updatedAt TEXT
+      updatedAt TEXT,
+      finalDate TEXT
     );
   `);
 
@@ -83,6 +85,10 @@ export async function initDb(): Promise<void> {
 
   try {
     await db.execute(`ALTER TABLE events ADD COLUMN updatedAt TEXT;`);
+  } catch {}
+
+  try {
+    await db.execute(`ALTER TABLE events ADD COLUMN finalDate TEXT;`);
   } catch {}
 
   await db.execute(`
@@ -225,6 +231,7 @@ export async function getEventById(id: string): Promise<EventData | null> {
     passwordHash: String(eventRow.passwordHash),
     createdAt: String(eventRow.createdAt),
     updatedAt: eventRow.updatedAt ? String(eventRow.updatedAt) : String(eventRow.createdAt),
+    finalDate: eventRow.finalDate ? String(eventRow.finalDate) : null,
     votes,
   };
 }
@@ -243,11 +250,17 @@ export async function submitVote(
   }
 
   const eventCheck = await db.execute({
-    sql: `SELECT id FROM events WHERE id = ?`,
+    sql: `SELECT id, finalDate FROM events WHERE id = ?`,
     args: [eventId],
   });
   if (eventCheck.rows.length === 0) {
     return { success: false, error: '존재하지 않는 모임입니다.' };
+  }
+  if (eventCheck.rows[0].finalDate) {
+    return {
+      success: false,
+      error: '날짜가 이미 확정되어 투표를 변경할 수 없습니다. 방장이 확정을 해제하면 다시 투표할 수 있어요.',
+    };
   }
 
   const existingRes = await db.execute({
@@ -375,6 +388,43 @@ export async function updateEventDetails(
   await db.execute({
     sql: `UPDATE events SET updatedAt = ? WHERE id = ?`,
     args: [now, eventId],
+  });
+
+  const updated = await getEventById(eventId);
+  return { success: true, event: updated || undefined };
+}
+
+export async function finalizeEventDate(
+  eventId: string,
+  passwordAttempt: string,
+  finalDate: string | null
+): Promise<{ success: boolean; event?: EventData; error?: string }> {
+  const db = getDb();
+  const eventRes = await db.execute({
+    sql: `SELECT passwordHash, dates FROM events WHERE id = ?`,
+    args: [eventId],
+  });
+
+  if (eventRes.rows.length === 0) {
+    return { success: false, error: '존재하지 않는 일정입니다.' };
+  }
+
+  const isMatch = await bcrypt.compare(passwordAttempt, String(eventRes.rows[0].passwordHash));
+  if (!isMatch) {
+    return { success: false, error: '방장 비밀번호가 일치하지 않습니다.' };
+  }
+
+  const normalized = finalDate ? finalDate.trim() : '';
+  if (normalized) {
+    const candidates: string[] = JSON.parse(String(eventRes.rows[0].dates));
+    if (!candidates.includes(normalized)) {
+      return { success: false, error: '후보 날짜 범위에 없는 날짜는 확정할 수 없습니다.' };
+    }
+  }
+
+  await db.execute({
+    sql: `UPDATE events SET finalDate = ?, updatedAt = ? WHERE id = ?`,
+    args: [normalized || null, new Date().toISOString(), eventId],
   });
 
   const updated = await getEventById(eventId);

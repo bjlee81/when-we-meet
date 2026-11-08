@@ -17,9 +17,11 @@ import {
   ArrowLeft,
   MapPin,
   ExternalLink,
-  Edit3
+  Edit3,
+  CalendarCheck
 } from 'lucide-react';
 import { AdBanner } from '@/components/AdBanner';
+import { buildShareMessage } from '@/lib/share';
 import { 
   calculateHeatmap, 
   findBestDates, 
@@ -39,6 +41,7 @@ interface EventDetails {
   endDate: string;
   dates: string[];
   createdAt: string;
+  finalDate?: string | null;
   votes: ParticipantVote[];
 }
 
@@ -73,6 +76,13 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
   const [editPassword, setEditPassword] = useState('');
   const [editError, setEditError] = useState('');
   const [updatingDetails, setUpdatingDetails] = useState(false);
+
+  // 날짜 확정 모달 상태
+  const [showFinalizeModal, setShowFinalizeModal] = useState(false);
+  const [finalizeDate, setFinalizeDate] = useState('');
+  const [finalizePassword, setFinalizePassword] = useState('');
+  const [finalizeError, setFinalizeError] = useState('');
+  const [finalizing, setFinalizing] = useState(false);
 
   // 선택된 날짜 상세 팝업 상태
   const [activeDateSummary, setActiveDateSummary] = useState<DateSummary | null>(null);
@@ -249,6 +259,55 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // 모바일 공유 시트(카카오톡 포함)로 공유, 미지원 시 링크 복사
+  const handleShare = async () => {
+    if (!event) return;
+    const msg = buildShareMessage(event, window.location.href);
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        await navigator.share({ title: msg.title, text: msg.text, url: msg.url });
+        return;
+      } catch (err: any) {
+        // 사용자가 공유 시트를 닫은 경우는 조용히 종료
+        if (err?.name === 'AbortError') return;
+      }
+    }
+    handleCopyLink();
+  };
+
+  const handleOpenFinalizeModal = (recommended?: string) => {
+    setFinalizeDate(event?.finalDate || recommended || '');
+    setFinalizePassword('');
+    setFinalizeError('');
+    setShowFinalizeModal(true);
+  };
+
+  // finalDate가 null이면 확정 해제
+  const submitFinalize = async (target: string | null) => {
+    setFinalizeError('');
+    if (target !== null && !target) {
+      setFinalizeError('확정할 날짜를 선택해주세요.');
+      return;
+    }
+    setFinalizing(true);
+    try {
+      const res = await fetch(`/api/events/${eventId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ finalDate: target, password: finalizePassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '날짜 확정에 실패했습니다.');
+
+      await fetchEvent();
+      setShowFinalizeModal(false);
+    } catch (err: any) {
+      setFinalizeError(err.message);
+    } finally {
+      setFinalizing(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-zinc-950">
@@ -309,7 +368,15 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
             </button>
 
             <button
-              onClick={handleCopyLink}
+              onClick={() => handleOpenFinalizeModal(bestDates[0]?.date)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-xs font-semibold transition cursor-pointer"
+            >
+              <CalendarCheck className="w-3.5 h-3.5" />
+              <span>{event.finalDate ? '확정 변경' : '날짜 확정'}</span>
+            </button>
+
+            <button
+              onClick={handleShare}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-xs font-semibold transition cursor-pointer"
             >
               {copied ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
@@ -391,8 +458,23 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
           </div>
         </div>
 
+        {/* ✅ 확정된 날짜 배너 */}
+        {event.finalDate && (
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl p-4 flex items-center gap-3 shadow-md">
+            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+              <CalendarCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs font-bold uppercase tracking-wider opacity-90">날짜가 확정되었어요!</div>
+              <div className="text-lg font-bold mt-0.5">
+                {format(parseISO(event.finalDate), 'yyyy년 M월 d일 (EEE)', { locale: ko })}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 🌟 Best Date 추천 배너 (참여자가 있을 때) */}
-        {totalParticipants > 0 && bestDates.length > 0 && (
+        {!event.finalDate && totalParticipants > 0 && bestDates.length > 0 && (
           <div className="bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-blue-500/10 border border-emerald-500/20 rounded-2xl p-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
               <Sparkles className="w-5 h-5" />
@@ -423,6 +505,13 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
           </div>
 
           <form onSubmit={handleVoteSubmit} className="space-y-4">
+            {event.finalDate && (
+              <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 dark:bg-amber-950/40 p-3 rounded-lg border border-amber-200 dark:border-amber-900/50">
+                <Lock className="w-4 h-4 shrink-0" />
+                <span>날짜가 확정되어 투표가 잠겼습니다. 방장이 확정을 해제하면 다시 수정할 수 있어요.</span>
+              </div>
+            )}
+
             {voteError && (
               <div className="flex items-center gap-2 text-xs text-rose-600 bg-rose-50 dark:bg-rose-950/40 p-3 rounded-lg border border-rose-200 dark:border-rose-900/50">
                 <AlertCircle className="w-4 h-4 shrink-0" />
@@ -544,7 +633,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
 
             <button
               type="submit"
-              disabled={submittingVote || !myParticipantName.trim()}
+              disabled={submittingVote || !myParticipantName.trim() || Boolean(event.finalDate)}
               className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-bold rounded-xl shadow-md transition disabled:opacity-50 text-sm cursor-pointer"
             >
               {submittingVote ? '저장 중...' : '내 일정 등록/수정 완료'}
@@ -803,6 +892,96 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
                   {updatingDetails ? '수정 중...' : '수정 완료'}
                 </button>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 날짜 확정 모달 */}
+      {showFinalizeModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4">
+            <div className="flex items-center gap-2 text-amber-600">
+              <CalendarCheck className="w-5 h-5" />
+              <h3 className="font-bold text-base">모임 날짜 확정</h3>
+            </div>
+            <p className="text-xs text-zinc-500">
+              확정하면 모든 참여자의 투표가 잠깁니다. 방 생성 시 설정한 방장 비밀번호가 필요합니다.
+            </p>
+
+            {finalizeError && (
+              <div className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-950/40 p-2.5 rounded-lg border border-rose-200 dark:border-rose-900/50">
+                {finalizeError}
+              </div>
+            )}
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                submitFinalize(finalizeDate);
+              }}
+              className="space-y-3"
+            >
+              <div>
+                <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1">확정할 날짜</label>
+                <select
+                  value={finalizeDate}
+                  onChange={(e) => setFinalizeDate(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-xl dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm outline-none focus:ring-2 focus:ring-amber-500"
+                >
+                  <option value="">날짜를 선택하세요</option>
+                  {event.dates.map((d) => {
+                    const sum = heatmap[d];
+                    return (
+                      <option key={d} value={d}>
+                        {format(parseISO(d), 'M월 d일 (EEE)', { locale: ko })} · 가능 {sum?.availableCount ?? 0}명
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
+                  방장 비밀번호 <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  placeholder="방 생성 시 설정한 비밀번호"
+                  value={finalizePassword}
+                  onChange={(e) => setFinalizePassword(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border rounded-xl dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowFinalizeModal(false)}
+                  className="flex-1 py-2 rounded-xl text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 text-zinc-700 dark:text-zinc-300 transition cursor-pointer"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  disabled={finalizing}
+                  className="flex-1 py-2 rounded-xl text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white transition disabled:opacity-50 cursor-pointer"
+                >
+                  {finalizing ? '처리 중...' : '날짜 확정'}
+                </button>
+              </div>
+
+              {event.finalDate && (
+                <button
+                  type="button"
+                  disabled={finalizing || !finalizePassword}
+                  onClick={() => submitFinalize(null)}
+                  className="w-full py-2 rounded-xl text-xs font-semibold text-rose-600 border border-rose-200 dark:border-rose-900/50 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50 cursor-pointer"
+                >
+                  확정 해제 (다시 투표 열기)
+                </button>
+              )}
             </form>
           </div>
         </div>

@@ -41,6 +41,17 @@ export async function PATCH(
       );
     }
 
+    // 날짜 확정/해제: finalDate 키가 있으면 처리 (null 또는 빈 문자열 = 확정 해제)
+    if (Object.prototype.hasOwnProperty.call(body, 'finalDate')) {
+      const { finalizeEventDate } = await import('@/lib/db');
+      const finalRes = await finalizeEventDate(id, password, body.finalDate || null);
+      if (!finalRes.success) {
+        return NextResponse.json({ error: finalRes.error }, { status: 400 });
+      }
+      const { passwordHash, ...safeFinalEvent } = finalRes.event!;
+      return NextResponse.json({ success: true, event: safeFinalEvent });
+    }
+
     const { updateEventDetails } = await import('@/lib/db');
     const res = await updateEventDetails(id, {
       title,
