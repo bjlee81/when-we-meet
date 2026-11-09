@@ -15,9 +15,47 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://when-we-meet-gamma.vercel.app';
+
 export const metadata: Metadata = {
-  title: "When We Meet | 초간편 친구 약속 조율",
-  description: "회원가입 없이 링크 하나로 친구들과 가장 완벽한 약속 날짜를 찾아보세요!",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "When We Meet | 초간편 친구 약속 날짜 조율",
+    template: "%s | When We Meet",
+  },
+  description: "회원가입 없이 링크 하나로 친구들과 가장 완벽한 약속 날짜를 찾아보세요! 무료 모임 날짜 투표, 최적 일정 자동 계산, 캘린더 등록.",
+  keywords: [
+    "약속 날짜 조율",
+    "모임 날짜 투표",
+    "when2meet 한국어",
+    "약속 잡기",
+    "일정 조율 사이트",
+    "친구 모임 투표",
+    "시간 조율",
+    "모임 캘린더",
+    "when we meet"
+  ],
+  authors: [{ name: "When We Meet" }],
+  creator: "When We Meet",
+  openGraph: {
+    type: "website",
+    locale: "ko_KR",
+    url: siteUrl,
+    title: "When We Meet | 초간편 친구 약속 날짜 조율",
+    description: "회원가입 없이 링크 하나로 친구들과 가장 완벽한 약속 날짜를 찾아보세요!",
+    siteName: "When We Meet",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "When We Meet | 초간편 친구 약속 날짜 조율",
+    description: "회원가입 없이 링크 하나로 친구들과 가장 완벽한 약속 날짜를 찾아보세요!",
+  },
+  verification: {
+    google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION,
+    other: {
+      "naver-site-verification": process.env.NEXT_PUBLIC_NAVER_SITE_VERIFICATION || "",
+    },
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
