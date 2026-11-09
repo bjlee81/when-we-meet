@@ -12,7 +12,8 @@ import {
   AlertCircle, 
   CheckCircle2,
   Lock,
-  ArrowLeft
+  ArrowLeft,
+  MessageSquare
 } from 'lucide-react';
 
 export default function AdminPage() {
@@ -21,8 +22,8 @@ export default function AdminPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loginError, setLoginError] = useState('');
 
-  // 탭 상태: 'ads' | 'events'
-  const [tab, setTab] = useState<'ads' | 'events'>('ads');
+  // 탭 상태: 'ads' | 'events' | 'feedbacks'
+  const [tab, setTab] = useState<'ads' | 'events' | 'feedbacks'>('ads');
 
   // 광고 설정 상태
   const [settings, setSettings] = useState({
@@ -38,6 +39,10 @@ export default function AdminPage() {
   // 모임방 목록 상태
   const [events, setEvents] = useState<any[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(false);
+
+  // 피드백 목록 상태
+  const [feedbacks, setFeedbacks] = useState<any[]>([]);
+  const [loadingFeedbacks, setLoadingFeedbacks] = useState(false);
 
   // 로그인 처리
   const handleLogin = async (e: React.FormEvent) => {
@@ -65,8 +70,46 @@ export default function AdminPage() {
       if (settingsData && settingsData.settings) {
         setSettings((prev) => ({ ...prev, ...settingsData.settings }));
       }
+
+      // 피드백 로드
+      loadFeedbacks(password);
     } catch (err: any) {
       setLoginError(err.message);
+    }
+  };
+
+  const loadFeedbacks = async (pw: string) => {
+    setLoadingFeedbacks(true);
+    try {
+      const res = await fetch('/api/admin/feedbacks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw }),
+      });
+      const data = await res.json();
+      if (data && data.feedbacks) {
+        setFeedbacks(data.feedbacks);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingFeedbacks(false);
+    }
+  };
+
+  const handleDeleteFeedback = async (id: string) => {
+    if (!confirm('이 피드백을 삭제하시겠습니까?')) return;
+    try {
+      const res = await fetch('/api/admin/feedbacks', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password, feedbackId: id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '삭제 실패');
+      setFeedbacks((prev) => prev.filter((f) => f.id !== id));
+    } catch (err: any) {
+      alert(err.message);
     }
   };
 
@@ -218,7 +261,19 @@ export default function AdminPage() {
               }`}
             >
               <Calendar className="w-3.5 h-3.5" />
-              <span>전체 모임 관리 ({events.length})</span>
+              <span>전체 모임 ({events.length})</span>
+            </button>
+            <button
+              onClick={() => {
+                setTab('feedbacks');
+                loadFeedbacks(password);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
+                tab === 'feedbacks' ? 'bg-blue-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:text-white'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>사용자 의견 ({feedbacks.length})</span>
             </button>
           </div>
         </div>
@@ -396,6 +451,82 @@ export default function AdminPage() {
                     </div>
                   </div>
                 ))
+              )}
+            </div>
+          </div>
+        )}
+        {/* 탭 3: 사용자 의견 관리 */}
+        {tab === 'feedbacks' && (
+          <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div>
+                <h2 className="text-base font-bold flex items-center gap-2 text-blue-400">
+                  <MessageSquare className="w-4 h-4" />
+                  <span>사용자가 보낸 의견 및 제보</span>
+                </h2>
+                <p className="text-xs text-zinc-400 mt-1">
+                  사용자들이 '개발자에게 의견 보내기'를 통해 남긴 소중한 피드백입니다.
+                </p>
+              </div>
+              <button
+                onClick={() => loadFeedbacks(password)}
+                className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-zinc-300 transition cursor-pointer"
+              >
+                새로고침
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {feedbacks.length === 0 ? (
+                <div className="text-center py-12 text-zinc-500 text-xs">
+                  아직 접수된 사용자 의견이 없습니다.
+                </div>
+              ) : (
+                feedbacks.map((fb) => {
+                  const categoryBadge = {
+                    feature: { bg: 'bg-blue-950 text-blue-300 border-blue-900/50', label: '💡 기능 제안' },
+                    bug: { bg: 'bg-rose-950 text-rose-300 border-rose-900/50', label: '🐛 오류 제보' },
+                    cheer: { bg: 'bg-emerald-950 text-emerald-300 border-emerald-900/50', label: '❤️ 응원' },
+                    etc: { bg: 'bg-zinc-800 text-zinc-300 border-zinc-700', label: '💬 기타' },
+                  }[fb.category as 'feature' | 'bug' | 'cheer' | 'etc'] || {
+                    bg: 'bg-zinc-800 text-zinc-300 border-zinc-700',
+                    label: '💬 기타',
+                  };
+
+                  return (
+                    <div
+                      key={fb.id}
+                      className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 flex flex-col sm:flex-row sm:items-start justify-between gap-3 text-xs"
+                    >
+                      <div className="space-y-2 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${categoryBadge.bg}`}>
+                            {categoryBadge.label}
+                          </span>
+                          <span className="text-zinc-500 text-[11px]">
+                            {fb.createdAt ? fb.createdAt.replace('T', ' ').substring(0, 19) : ''}
+                          </span>
+                          {fb.contact && (
+                            <span className="text-indigo-400 bg-indigo-950/60 px-2 py-0.5 rounded-full text-[10px] border border-indigo-900/50">
+                              연락처: {fb.contact}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-zinc-200 text-sm whitespace-pre-wrap leading-relaxed">
+                          {fb.content}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() => handleDeleteFeedback(fb.id)}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-rose-950/60 text-zinc-400 hover:text-rose-400 border border-zinc-800 hover:border-rose-900/50 transition cursor-pointer self-end sm:self-start shrink-0"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>삭제</span>
+                      </button>
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>

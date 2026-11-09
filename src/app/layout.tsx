@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { FeedbackButton } from "@/components/FeedbackButton";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -85,6 +86,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="min-h-full flex flex-col">
         {children}
+        {/* 💡 개발자에게 의견 보내기 플로팅 버튼 */}
+        <FeedbackButton />
         {/* Vercel Web Analytics & Speed Insights */}
         <Analytics />
         <SpeedInsights />

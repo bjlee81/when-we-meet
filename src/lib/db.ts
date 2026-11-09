@@ -41,6 +41,23 @@ export interface SubmitVoteInput {
   maybeDates?: string[];
 }
 
+export type FeedbackCategory = 'feature' | 'bug' | 'cheer' | 'etc';
+
+export interface FeedbackData {
+  id: string;
+  category: FeedbackCategory;
+  content: string;
+  contact?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface CreateFeedbackInput {
+  category?: string;
+  content: string;
+  contact?: string;
+}
+
 let dbClient: Client | null = null;
 
 export function getDb(): Client {
@@ -110,6 +127,17 @@ export async function initDb(): Promise<void> {
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
+    );
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS feedbacks (
+      id TEXT PRIMARY KEY,
+      category TEXT NOT NULL,
+      content TEXT NOT NULL,
+      contact TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT
     );
   `);
 
@@ -559,3 +587,72 @@ export async function cleanupExpiredEvents(
 
   return { deletedCount: deletedIds.length, deletedIds };
 }
+
+// ================= 개발자 피드백 / 의견 관리 =================
+
+const VALID_CATEGORIES: FeedbackCategory[] = ['feature', 'bug', 'cheer', 'etc'];
+
+export async function createFeedback(
+  input: CreateFeedbackInput
+): Promise<{ success: boolean; feedback?: FeedbackData; error?: string }> {
+  const content = (input.content || '').trim();
+  if (!content) {
+    return { success: false, error: '의견 내용을 입력해주세요.' };
+  }
+
+  const category: FeedbackCategory = VALID_CATEGORIES.includes(input.category as FeedbackCategory)
+    ? (input.category as FeedbackCategory)
+    : 'etc';
+
+  const contact = (input.contact || '').trim();
+  const db = getDb();
+  const id = 'fb_' + Math.random().toString(36).substring(2, 10);
+  const now = new Date().toISOString();
+
+  await db.execute({
+    sql: `INSERT INTO feedbacks (id, category, content, contact, createdAt, updatedAt)
+          VALUES (?, ?, ?, ?, ?, ?)`,
+    args: [id, category, content, contact || null, now, now],
+  });
+
+  return {
+    success: true,
+    feedback: {
+      id,
+      category,
+      content,
+      contact,
+      createdAt: now,
+      updatedAt: now,
+    },
+  };
+}
+
+export async function getAllFeedbacksForAdmin(): Promise<FeedbackData[]> {
+  const db = getDb();
+  const res = await db.execute(`
+    SELECT * FROM feedbacks 
+    ORDER BY createdAt DESC
+  `);
+
+  return res.rows.map((r) => ({
+    id: String(r.id),
+    category: (VALID_CATEGORIES.includes(String(r.category) as FeedbackCategory) 
+      ? String(r.category) 
+      : 'etc') as FeedbackCategory,
+    content: String(r.content),
+    contact: r.contact ? String(r.contact) : '',
+    createdAt: String(r.createdAt),
+    updatedAt: r.updatedAt ? String(r.updatedAt) : String(r.createdAt),
+  }));
+}
+
+export async function adminDeleteFeedback(id: string): Promise<boolean> {
+  const db = getDb();
+  await db.execute({
+    sql: `DELETE FROM feedbacks WHERE id = ?`,
+    args: [id],
+  });
+  return true;
+}
+
