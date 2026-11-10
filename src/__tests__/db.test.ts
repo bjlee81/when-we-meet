@@ -157,6 +157,36 @@ describe('Database / Storage Operations', () => {
     expect(updated?.location).toBe('강남역 11번출구');
   });
 
+  it('creates and updates event title with complex special characters and emojis', async () => {
+    const complexTitle = '🎉[긴급] \'불금\' <치맥&와인> "파티" #1 (3/15) ~!@#$%^&*()_+';
+    const event = await createEvent({
+      title: complexTitle,
+      description: '특수문자 테스트: <script>alert("xss")</script> & 100% 완전무결',
+      startDate: '2026-11-20',
+      endDate: '2026-11-22',
+      password: 'hostpassword123',
+    });
+
+    expect(event.title).toBe(complexTitle);
+
+    const retrieved = await getEventById(event.id);
+    expect(retrieved?.title).toBe(complexTitle);
+    expect(retrieved?.description).toContain('<script>');
+
+    // 호스트가 모임 이름을 새로운 특수문자/이모지로 수정
+    const newTitle = '🚀 2차 확정! <달빛포차> @강남 "치킨&피자" 🍕🍺';
+    const updateRes = await updateEventDetails(event.id, {
+      title: newTitle,
+      password: 'hostpassword123',
+    });
+
+    expect(updateRes.success).toBe(true);
+    expect(updateRes.event?.title).toBe(newTitle);
+
+    const retrievedAfter = await getEventById(event.id);
+    expect(retrievedAfter?.title).toBe(newTitle);
+  });
+
   it('manages master admin settings and all events list', async () => {
     // 1. 전역 광고 설정 저장 및 조회
     await updateSiteSettings({

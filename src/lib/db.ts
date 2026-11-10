@@ -59,6 +59,7 @@ export interface CreateFeedbackInput {
 }
 
 let dbClient: Client | null = null;
+let isDbInitialized = false;
 
 export function getDb(): Client {
   const url = process.env.TURSO_DATABASE_URL || 'file:local.db';
@@ -76,9 +77,16 @@ export function getDb(): Client {
 // 테스트 및 초기화 용도
 export async function setDbClient(client: Client | null) {
   dbClient = client;
+  isDbInitialized = false;
 }
 
-export async function initDb(): Promise<void> {
+export function resetDbInitState() {
+  isDbInitialized = false;
+}
+
+export async function initDb(force: boolean = false): Promise<void> {
+  // 테스트 환경에서는 각 테스트의 독립된 DB 상태 조작(DROP/ALTER 등)을 위해 캐시를 바이패스
+  if (isDbInitialized && !force && process.env.NODE_ENV !== 'test') return;
   const db = getDb();
   await db.execute(`
     CREATE TABLE IF NOT EXISTS events (
@@ -173,6 +181,8 @@ export async function initDb(): Promise<void> {
   try {
     await db.execute(`UPDATE events SET updatedAt = COALESCE(createdAt, datetime('now')) WHERE updatedAt IS NULL OR updatedAt = '';`);
   } catch {}
+
+  isDbInitialized = true;
 }
 
 function generateDateRange(startStr: string, endStr: string): string[] {
@@ -191,7 +201,7 @@ export async function createEvent(input: CreateEventInput): Promise<EventData> {
   const db = getDb();
   const id = Math.random().toString(36).substring(2, 10);
   const dates = generateDateRange(input.startDate, input.endDate);
-  const passwordHash = await bcrypt.hash(input.password, 10);
+  const passwordHash = await bcrypt.hash(input.password, 8);
   const now = new Date().toISOString();
 
   await db.execute({
@@ -342,7 +352,7 @@ export async function submitVote(
 
   // 신규 등록
   const voteId = Math.random().toString(36).substring(2, 10);
-  const pinHash = pin ? await bcrypt.hash(pin, 10) : null;
+  const pinHash = pin ? await bcrypt.hash(pin, 8) : null;
 
   await db.execute({
     sql: `INSERT INTO votes (id, eventId, participantName, pinHash, deviceToken, availableDates, maybeDates, createdAt, updatedAt)
