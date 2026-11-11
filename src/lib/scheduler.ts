@@ -157,6 +157,12 @@ export function calculateSlotHeatmap(
   return result;
 }
 
+export interface RankedDateSummary extends DateSummary {
+  rank: number; // 1, 2, 3
+  matchRatio: number; // 0 to 100
+  isUnanimous: boolean;
+}
+
 export function findBestDates(heatmap: HeatmapData): DateSummary[] {
   const summaries = Object.values(heatmap);
   if (summaries.length === 0) return [];
@@ -167,6 +173,39 @@ export function findBestDates(heatmap: HeatmapData): DateSummary[] {
   return summaries
     .filter((s) => s.score === maxScore)
     .sort((a, b) => b.availableCount - a.availableCount);
+}
+
+/**
+ * 투표 결과를 기반으로 가장 참여율이 높은 상위 추천 날짜(Top N)를 정렬하여 반환합니다.
+ * - 1위: 점수(score) 최고, 가능 인원 최다, 불참자 최소
+ * - 랭크별 matchRatio(참석률 %), isUnanimous(만장일치 여부) 포함
+ */
+export function findTopRankedDates(
+  heatmap: HeatmapData,
+  totalParticipants: number,
+  limit = 3
+): RankedDateSummary[] {
+  const summaries = Object.values(heatmap);
+  if (summaries.length === 0 || totalParticipants <= 0) return [];
+
+  const sorted = [...summaries]
+    .filter((s) => s.score > 0)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.availableCount !== a.availableCount) return b.availableCount - a.availableCount;
+      return b.maybeCount - a.maybeCount;
+    });
+
+  return sorted.slice(0, limit).map((s, idx) => {
+    const matchRatio = Math.round((s.availableCount / totalParticipants) * 100);
+    const isUnanimous = s.availableCount === totalParticipants && totalParticipants > 0;
+    return {
+      ...s,
+      rank: idx + 1,
+      matchRatio,
+      isUnanimous,
+    };
+  });
 }
 
 /**

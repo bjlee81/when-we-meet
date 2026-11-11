@@ -23,7 +23,14 @@ import {
   Layers,
   UserCheck,
   HelpCircle,
-  Paintbrush
+  Paintbrush,
+  Trophy,
+  Flame,
+  Award,
+  Image as ImageIcon,
+  CheckCircle2,
+  ChevronRight,
+  TrendingUp
 } from 'lucide-react';
 import { AdBanner } from '@/components/AdBanner';
 import { fetchJsonWithRetry } from '@/lib/fetch-json';
@@ -32,11 +39,14 @@ import { generateGoogleCalendarUrl, downloadIcsFile } from '@/lib/calendar';
 import { 
   calculateHeatmap, 
   findBestDates, 
+  findTopRankedDates,
   generateWeeklyCalendarGrid, 
   getSlotDensityTier,
   ParticipantVote, 
-  DateSummary 
+  DateSummary,
+  RankedDateSummary
 } from '@/lib/scheduler';
+import { downloadInvitationCardImage } from '@/lib/invitation-card';
 import { format, parseISO } from 'date-fns';
 import { ko } from 'date-fns/locale';
 
@@ -409,6 +419,39 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
     }
   };
 
+  const [downloadingCard, setDownloadingCard] = useState(false);
+
+  // 확정 안내장 이미지 다운로드
+  const handleDownloadCard = async (targetDate?: string) => {
+    if (!event) return;
+    const dateToUse = targetDate || event.finalDate || bestDates[0]?.date || event.dates[0];
+    if (!dateToUse) return;
+
+    setDownloadingCard(true);
+    try {
+      const summary = heatmap[dateToUse];
+      const participants = summary?.availableNames?.length
+        ? summary.availableNames
+        : event.votes.map((v) => v.participantName);
+
+      const success = await downloadInvitationCardImage({
+        title: event.title,
+        finalDate: dateToUse,
+        location: event.location,
+        participants,
+      });
+
+      if (!success) {
+        alert('안내장 이미지를 생성하지 못했습니다.');
+      }
+    } catch (err) {
+      console.error('Failed to download card:', err);
+      alert('안내장 이미지 생성 중 오류가 발생했습니다.');
+    } finally {
+      setDownloadingCard(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-surface flex flex-col items-center justify-center p-4">
@@ -441,6 +484,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
   const heatmap = calculateHeatmap(event.dates, event.votes);
   const bestDates = findBestDates(heatmap);
   const totalParticipants = event.votes.length;
+  const topRanks = findTopRankedDates(heatmap, totalParticipants, 3);
   const weeklyGrid = generateWeeklyCalendarGrid(event.dates);
 
   // 호버 중인 날짜 요약
@@ -578,6 +622,16 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => handleDownloadCard(event.finalDate!)}
+                  disabled={downloadingCard}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-tertiary text-on-tertiary hover:bg-tertiary-container text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-50"
+                >
+                  <ImageIcon className="w-3.5 h-3.5" />
+                  <span>{downloadingCard ? '생성 중...' : '확정 안내장 이미지 저장'}</span>
+                </button>
+
                 <a
                   href={generateGoogleCalendarUrl({
                     title: event.title,
@@ -615,32 +669,370 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
           </div>
         )}
 
-        {/* 🌟 Best Date 1순위 추천 배너 (미확정 시) */}
-        {!event.finalDate && totalParticipants > 0 && bestDates.length > 0 && (
-          <div className="bg-surface-container-lowest rounded-2xl p-5 border border-tertiary/20 shadow-md flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-tertiary-container/15 text-tertiary flex items-center justify-center shrink-0">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-tertiary flex items-center gap-1">
-                  <span>가장 추천하는 모임 날짜 (Best Match)</span>
+        {/* 🏆 Top 3 최적 시간 추천 대시보드 & 타임라인 현황 (참여자가 1명 이상일 때) */}
+        {totalParticipants > 0 && topRanks.length > 0 && (
+          <div className="space-y-6">
+            {/* 1. 골든 타임 브로드캐스트 배너 */}
+            <div className="w-full bg-gradient-to-r from-primary via-primary-container to-tertiary-container text-on-primary rounded-2xl p-5 sm:p-6 shadow-xl shadow-primary/20 relative overflow-hidden">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-4 relative z-10">
+                <div className="flex items-center gap-4 min-w-0">
+                  <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0">
+                    <Flame className="w-6 h-6 text-tertiary-fixed" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[11px] uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-tertiary-fixed text-on-tertiary-fixed font-bold">
+                        {topRanks[0].isUnanimous ? '100% 전원 매칭' : `최고 참석률 ${topRanks[0].matchRatio}%`}
+                      </span>
+                      <span className="text-xs text-on-primary-container font-medium">
+                        총 {totalParticipants}명 중 {topRanks[0].availableCount}명 참석 가능
+                      </span>
+                    </div>
+                    <p className="text-base sm:text-lg font-bold text-white truncate mt-1">
+                      {topRanks[0].isUnanimous
+                        ? '모두가 모일 수 있는 완벽한 골든 타임이 발견되었습니다!'
+                        : `${topRanks[0].availableCount}명이 모일 수 있는 최적의 일정이 도출되었습니다!`}
+                    </p>
+                  </div>
                 </div>
-                <div className="text-base font-extrabold text-on-surface mt-0.5">
-                  {bestDates.map((b) => format(parseISO(b.date), 'M월 d일 (EEE)', { locale: ko })).join(', ')}
-                  <span className="text-xs font-semibold text-primary ml-2">
-                    {bestDates[0].availableCount}명 가능 (만족도 {Math.round((bestDates[0].availableCount / totalParticipants) * 100)}%)
-                  </span>
+
+                {!event.finalDate && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenFinalizeModal(topRanks[0].date)}
+                    className="px-5 py-2.5 bg-white text-primary hover:bg-surface-container font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 shrink-0 cursor-pointer"
+                  >
+                    <span>1순위 바로 확정하기</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 2. Top 3 비대칭 벤토 그리드 */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-primary" />
+                  <h3 className="font-extrabold text-lg text-on-surface">추천 시간대 순위 (Top 3)</h3>
+                </div>
+                <span className="text-xs text-on-surface-variant font-medium hidden sm:inline">
+                  참석 인원수 및 선호도 가중치 분석 결과
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+                {/* 1순위 Best Match 히어로 카드 (lg:col-span-7) */}
+                {topRanks[0] && (
+                  <div className="lg:col-span-7 bg-surface-container-lowest rounded-2xl p-6 shadow-xl shadow-primary/5 border border-surface-container-high flex flex-col justify-between relative overflow-hidden">
+                    <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-primary via-primary-container to-tertiary" />
+
+                    <div className="space-y-4">
+                      {/* 태그 & 배지 */}
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="px-3 py-1 bg-primary text-on-primary text-xs rounded-lg font-bold flex items-center gap-1 shadow-sm">
+                            <Trophy className="w-3.5 h-3.5" />
+                            <span>1순위 Best Match</span>
+                          </span>
+                          <span className="px-3 py-1 bg-tertiary-container/15 text-tertiary text-xs rounded-lg font-bold flex items-center gap-1">
+                            <Flame className="w-3.5 h-3.5" />
+                            <span>{topRanks[0].isUnanimous ? '🔥 참석률 100% 전원 만장일치' : `참석률 ${topRanks[0].matchRatio}%`}</span>
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 bg-surface-container px-2.5 py-1 rounded-full">
+                          <span className="w-2 h-2 rounded-full bg-tertiary animate-pulse" />
+                          <span className="text-[11px] font-bold text-on-surface">강력 추천</span>
+                        </div>
+                      </div>
+
+                      {/* 날짜 쇼케이스 */}
+                      <div className="bg-surface-container-low p-4 rounded-xl border border-surface-container-high flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <div className="text-xs font-bold text-primary">최적 모임 추천 일자</div>
+                          <div className="text-2xl font-extrabold text-on-surface tracking-tight mt-0.5">
+                            {format(parseISO(topRanks[0].date), 'M월 d일 (EEEE)', { locale: ko })}
+                          </div>
+                        </div>
+                        <div className="sm:text-right">
+                          <div className="text-sm font-bold text-tertiary">
+                            {topRanks[0].availableCount}명 가능
+                            {topRanks[0].maybeCount > 0 && ` (${topRanks[0].maybeCount}명 조율)`}
+                          </div>
+                          <span className="text-[11px] text-on-surface-variant font-medium">
+                            불참 {topRanks[0].unavailableNames.length}명
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* 참석 확정자 명단 */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-on-surface">
+                            참석 가능자 ({topRanks[0].availableNames.length}명)
+                          </span>
+                          {topRanks[0].unavailableNames.length > 0 && (
+                            <span className="text-secondary font-semibold text-[11px]">
+                              불참: {topRanks[0].unavailableNames.join(', ')}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {topRanks[0].availableNames.map((name, i) => (
+                            <span
+                              key={i}
+                              className="px-2.5 py-1 rounded-lg bg-surface-container text-on-surface text-xs font-medium flex items-center gap-1"
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-tertiary" />
+                              <span>{name}</span>
+                              {i === 0 && <span className="text-[10px] text-primary font-bold">(방장)</span>}
+                            </span>
+                          ))}
+                          {topRanks[0].maybeNames.map((name, i) => (
+                            <span
+                              key={`maybe-${i}`}
+                              className="px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200 text-xs font-medium flex items-center gap-1"
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                              <span>{name} (조율)</span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 카드 하단 CTA 영역 */}
+                    <div className="pt-5 mt-4 border-t border-surface-container-high flex flex-col sm:flex-row items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadCard(topRanks[0].date)}
+                        disabled={downloadingCard}
+                        className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        <ImageIcon className="w-4 h-4 text-primary" />
+                        <span>{downloadingCard ? '생성 중...' : '1순위 안내장 카드 저장'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenFinalizeModal(topRanks[0].date)}
+                        className="w-full sm:w-auto px-5 py-2.5 bg-primary hover:bg-primary-container text-on-primary font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <CalendarCheck className="w-4 h-4" />
+                        <span>이 날짜로 모임 확정</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 2순위 & 3순위 대체안 스택 카드 (lg:col-span-5) */}
+                <div className="lg:col-span-5 flex flex-col gap-4">
+                  {/* 2순위 카드 */}
+                  {topRanks[1] && (
+                    <div className="bg-surface-container-lowest rounded-2xl p-5 shadow-sm border border-surface-container-high flex flex-col justify-between hover:shadow-md transition">
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="px-2.5 py-1 bg-surface-container text-on-surface-variant text-xs rounded-lg font-bold flex items-center gap-1">
+                            <Award className="w-3.5 h-3.5 text-primary" />
+                            <span>2순위 대체안</span>
+                          </span>
+                          <span className="px-2.5 py-0.5 bg-surface-container-high text-on-surface text-[11px] rounded-full font-bold">
+                            참석률 {topRanks[1].matchRatio}% ({topRanks[1].availableCount}명)
+                          </span>
+                        </div>
+                        <div>
+                          <div className="text-base font-bold text-on-surface">
+                            {format(parseISO(topRanks[1].date), 'M월 d일 (EEE)', { locale: ko })}
+                          </div>
+                          {topRanks[1].unavailableNames.length > 0 && (
+                            <p className="text-xs text-secondary mt-0.5">
+                              불참: {topRanks[1].unavailableNames.join(', ')}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {topRanks[1].availableNames.map((name, i) => (
+                            <span key={i} className="px-2 py-0.5 rounded bg-surface-container-low text-[11px] text-on-surface font-medium">
+                              {name}
+                            </span>
+                          ))}
+                          {topRanks[1].unavailableNames.map((name, i) => (
+                            <span key={`u-${i}`} className="px-2 py-0.5 rounded bg-secondary-fixed/40 text-secondary text-[11px] font-semibold line-through">
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-surface-container flex items-center justify-between">
+                        <span className="text-[11px] text-on-surface-variant font-medium">차선책 후보</span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenFinalizeModal(topRanks[1].date)}
+                          className="px-3.5 py-1.5 bg-surface-container hover:bg-primary hover:text-on-primary text-primary text-xs font-bold rounded-lg transition cursor-pointer"
+                        >
+                          선택하기
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3순위 카드 */}
+                  {topRanks[2] && (
+                    <div className="bg-surface-container-lowest rounded-2xl p-5 shadow-sm border border-surface-container-high flex flex-col justify-between hover:shadow-md transition">
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="px-2.5 py-1 bg-surface-container text-on-surface-variant text-xs rounded-lg font-bold flex items-center gap-1">
+                            <Award className="w-3.5 h-3.5 text-on-surface-variant" />
+                            <span>3순위 대체안</span>
+                          </span>
+                          <span className="px-2.5 py-0.5 bg-surface-container-high text-on-surface text-[11px] rounded-full font-bold">
+                            참석률 {topRanks[2].matchRatio}% ({topRanks[2].availableCount}명)
+                          </span>
+                        </div>
+                        <div>
+                          <div className="text-base font-bold text-on-surface">
+                            {format(parseISO(topRanks[2].date), 'M월 d일 (EEE)', { locale: ko })}
+                          </div>
+                          {topRanks[2].unavailableNames.length > 0 && (
+                            <p className="text-xs text-secondary mt-0.5">
+                              불참: {topRanks[2].unavailableNames.join(', ')}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {topRanks[2].availableNames.map((name, i) => (
+                            <span key={i} className="px-2 py-0.5 rounded bg-surface-container-low text-[11px] text-on-surface font-medium">
+                              {name}
+                            </span>
+                          ))}
+                          {topRanks[2].unavailableNames.map((name, i) => (
+                            <span key={`u-${i}`} className="px-2 py-0.5 rounded bg-secondary-fixed/40 text-secondary text-[11px] font-semibold line-through">
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-surface-container flex items-center justify-between">
+                        <span className="text-[11px] text-on-surface-variant font-medium">대안 일정</span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenFinalizeModal(topRanks[2].date)}
+                          className="px-3.5 py-1.5 bg-surface-container hover:bg-primary hover:text-on-primary text-primary text-xs font-bold rounded-lg transition cursor-pointer"
+                        >
+                          선택하기
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
 
-            <button
-              onClick={() => handleOpenFinalizeModal(bestDates[0]?.date)}
-              className="px-4 py-2 bg-tertiary hover:bg-tertiary-container text-on-tertiary text-xs font-bold rounded-xl transition shadow-sm cursor-pointer ml-auto"
-            >
-              이 날짜로 바로 확정
-            </button>
+            {/* 3. 참여자별 응답 타임라인 바 차트 (Detailed Availability Matrix) */}
+            <div className="bg-surface-container-lowest rounded-2xl p-5 sm:p-6 shadow-xl shadow-primary/5 border border-surface-container-high space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-surface-container pb-3">
+                <div>
+                  <div className="text-xs font-bold text-primary flex items-center gap-1">
+                    <TrendingUp className="w-3.5 h-3.5" />
+                    <span>상세 데이터 비교</span>
+                  </div>
+                  <h4 className="font-extrabold text-base text-on-surface mt-0.5">
+                    참여자별 응답 타임라인 현황
+                  </h4>
+                </div>
+                <div className="flex items-center gap-3 text-xs">
+                  <div className="flex items-center gap-1">
+                    <span className="w-3 h-3 rounded bg-tertiary" />
+                    <span className="text-on-surface text-[11px]">가능</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="w-3 h-3 rounded bg-amber-400" />
+                    <span className="text-on-surface text-[11px]">조율</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="w-3 h-3 rounded bg-secondary-fixed text-secondary" />
+                    <span className="text-on-surface text-[11px]">불참</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 매트릭스 테이블 */}
+              <div className="overflow-x-auto">
+                <div className="min-w-[560px] space-y-2 text-xs">
+                  {/* 헤더 */}
+                  <div className="grid grid-cols-12 gap-2 text-center font-bold text-on-surface-variant pb-1">
+                    <div className="col-span-3 text-left pl-2">참여자</div>
+                    {topRanks.map((rank, i) => (
+                      <div
+                        key={rank.date}
+                        className={`col-span-3 py-1.5 rounded-lg ${
+                          i === 0
+                            ? 'bg-primary/10 text-primary font-bold'
+                            : 'bg-surface-container text-on-surface'
+                        }`}
+                      >
+                        {i === 0 ? '⭐ 1순위: ' : `${i + 1}순위: `}
+                        {format(parseISO(rank.date), 'M/d (EEE)', { locale: ko })}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 참여자 행들 */}
+                  {event.votes.map((v, idx) => (
+                    <div
+                      key={idx}
+                      className="grid grid-cols-12 gap-2 items-center p-2 rounded-xl bg-surface-container-low hover:bg-surface-container transition"
+                    >
+                      <div className="col-span-3 flex items-center gap-2 min-w-0 pl-1">
+                        <span className="w-6 h-6 rounded-full bg-primary text-on-primary text-[11px] font-bold flex items-center justify-center shrink-0">
+                          {v.participantName.slice(0, 1)}
+                        </span>
+                        <div className="truncate">
+                          <span className="font-bold text-on-surface block truncate">{v.participantName}</span>
+                          {idx === 0 && <span className="text-[10px] text-primary">모임장</span>}
+                        </div>
+                      </div>
+
+                      {topRanks.map((rank) => {
+                        const isAvail = rank.availableNames.includes(v.participantName);
+                        const isMaybe = rank.maybeNames.includes(v.participantName);
+                        return (
+                          <div
+                            key={rank.date}
+                            className={`col-span-3 h-8 rounded-lg flex items-center justify-center font-bold text-xs ${
+                              isAvail
+                                ? 'bg-tertiary text-on-tertiary'
+                                : isMaybe
+                                ? 'bg-amber-300 text-amber-950'
+                                : 'bg-surface-container text-on-surface-variant/50'
+                            }`}
+                          >
+                            {isAvail ? '가능' : isMaybe ? '조율' : '불참'}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+
+                  {/* 합계 행 */}
+                  <div className="grid grid-cols-12 gap-2 items-center pt-2 border-t border-surface-container text-center font-bold">
+                    <div className="col-span-3 text-left pl-2 text-on-surface">합계 가능 인원</div>
+                    {topRanks.map((rank, i) => (
+                      <div
+                        key={rank.date}
+                        className={`col-span-3 py-1 rounded-lg text-xs ${
+                          i === 0 ? 'text-tertiary font-extrabold bg-tertiary-container/10' : 'text-on-surface'
+                        }`}
+                      >
+                        {rank.availableCount}명 ({rank.matchRatio}%)
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
