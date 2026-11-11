@@ -36,6 +36,17 @@ describe('fetchJsonWithRetry', () => {
     expect(f).toHaveBeenCalledTimes(1);
   });
 
+  it('falls back to the next URL when the first one is blocked at network level', async () => {
+    const f = vi.fn().mockImplementation(async (url: string) => {
+      if (url === '/api/blocked') throw new TypeError('Failed to fetch');
+      return ok({ success: true });
+    });
+    vi.stubGlobal('fetch', f);
+    const res = await fetchJsonWithRetry(['/api/blocked', '/api/alt'], {}, { retryDelayMs: 0 });
+    expect(res.ok).toBe(true);
+    expect(f.mock.calls.map((c) => c[0])).toEqual(['/api/blocked', '/api/alt']);
+  });
+
   it('throws a friendly Korean message after retries are exhausted', async () => {
     const f = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
     vi.stubGlobal('fetch', f);

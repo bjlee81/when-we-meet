@@ -30,7 +30,7 @@ export const AdBanner: React.FC<AdBannerProps> = ({
 
   useEffect(() => {
     // 1. 서버 관리자 설정 가져오기
-    fetch('/api/admin/settings')
+    fetch('/api/site-config')
       .then((res) => res.json())
       .then((data) => {
         if (data && data.settings) {

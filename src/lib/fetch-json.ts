@@ -20,20 +20,24 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * HTTP 오류 응답은 재시도 없이 그대로 반환한다.
  */
 export async function fetchJsonWithRetry(
-  input: RequestInfo | URL,
+  input: string | string[],
   init: RequestInit = {},
   { retries = 2, retryDelayMs = 400 }: FetchJsonOptions = {}
 ): Promise<FetchJsonResult> {
+  // 광고 차단기가 특정 URL만 막는 경우를 대비해, 재시도마다 다음 후보 URL을 사용한다.
+  const urls = Array.isArray(input) ? input : [input];
+  const attempts = Math.max(retries, urls.length - 1);
   for (let attempt = 0; ; attempt++) {
     try {
-      const res = await fetch(input, { cache: 'no-store', ...init });
+      const res = await fetch(urls[attempt % urls.length], { cache: 'no-store', ...init });
       const data = await res.json().catch(() => ({}));
       return { ok: res.ok, status: res.status, data };
-    } catch (err) {
-      if (attempt >= retries) {
+    } catch {
+      if (attempt >= attempts) {
         throw new Error(NETWORK_ERROR_MESSAGE);
       }
       await sleep(retryDelayMs * (attempt + 1));
     }
   }
 }
+

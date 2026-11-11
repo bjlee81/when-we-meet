@@ -43,7 +43,7 @@ export default function Home() {
 
     setLoading(true);
     try {
-      const { ok, data } = await fetchJsonWithRetry('/api/events', {
+      const { ok, data } = await fetchJsonWithRetry(['/api/meetups', '/api/events'], {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
