@@ -102,12 +102,22 @@ export default function Home() {
       }
     } catch (err: any) {
       console.error('Create error:', err);
-      if (err instanceof NetworkError && formRef.current) {
-        // fetch/XHR 이 차단된 환경: 일반 폼 제출(페이지 이동)로 폴백
+      
+      // 번들러 트랜스파일 환경 및 브라우저 네이티브 차단(TypeError/Failed to fetch/광고차단기) 포괄 감지
+      const isNetworkOrBlock = 
+        err instanceof NetworkError || 
+        err?.name === 'NetworkError' ||
+        String(err?.message || '').toLowerCase().includes('fetch') ||
+        String(err?.message || '').toLowerCase().includes('network') ||
+        String(err?.message || '').toLowerCase().includes('failed');
+
+      if (isNetworkOrBlock && formRef.current) {
+        // fetch/XHR 이 차단되거나 실패한 환경: 일반 폼 제출(페이지 이동)로 즉시 자동 폴백
+        console.warn('Network or ad-blocker detected. Falling back to native HTML form POST.');
         formRef.current.submit();
         return;
       }
-      setError(err?.message || '네트워크 연결 오류가 발생했습니다.');
+      setError(err?.message || '모임 생성 중 오류가 발생했습니다. 입력 정보를 확인해주세요.');
     } finally {
       setLoading(false);
     }
