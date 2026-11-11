@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('next/font/google', () => ({
   Geist: () => ({ variable: '--font-geist-sans' }),
   Geist_Mono: () => ({ variable: '--font-geist-mono' }),
+  Plus_Jakarta_Sans: () => ({ variable: '--font-plus-jakarta' }),
 }));
 
 import robots from '@/app/robots';

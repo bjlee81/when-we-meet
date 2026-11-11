@@ -1,26 +1,91 @@
 @import "tailwindcss";
 
+@theme {
+  /* Stitch Design System Palette */
+  --color-surface: #f8f9ff;
+  --color-surface-dim: #cbdbf5;
+  --color-surface-bright: #f8f9ff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #eff4ff;
+  --color-surface-container: #e5eeff;
+  --color-surface-container-high: #dce9ff;
+  --color-surface-container-highest: #d3e4fe;
+  --color-surface-variant: #d3e4fe;
+
+  --color-on-surface: #0b1c30;
+  --color-on-surface-variant: #464555;
+  --color-inverse-surface: #213145;
+  --color-inverse-on-surface: #eaf1ff;
+  --color-outline: #777587;
+  --color-outline-variant: #c7c4d8;
+
+  --color-primary: #3525cd;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #4f46e5;
+  --color-on-primary-container: #dad7ff;
+  --color-inverse-primary: #c3c0ff;
+  --color-primary-fixed: #e2dfff;
+  --color-primary-fixed-dim: #c3c0ff;
+  --color-on-primary-fixed: #0f0069;
+  --color-on-primary-fixed-variant: #3323cc;
+
+  --color-secondary: #b90538;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #dc2c4f;
+  --color-on-secondary-container: #fffbff;
+  --color-secondary-fixed: #ffdadb;
+  --color-secondary-fixed-dim: #ffb2b7;
+  --color-on-secondary-fixed: #40000d;
+  --color-on-secondary-fixed-variant: #92002a;
+
+  --color-tertiary: #005338;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #006e4b;
+  --color-on-tertiary-container: #67f4b7;
+  --color-tertiary-fixed: #6ffbbe;
+  --color-tertiary-fixed-dim: #4edea3;
+  --color-on-tertiary-fixed: #002113;
+  --color-on-tertiary-fixed-variant: #005236;
+
+  /* Heatmap Availability Density Tiers */
+  --color-heatmap-0: #f8fafc;
+  --color-heatmap-1: #ecfdf5;
+  --color-heatmap-2: #a7f3d0;
+  --color-heatmap-3: #34d399;
+  --color-heatmap-4: #10b981;
+
+  /* Spacing Scale */
+  --spacing-space-xs: 0.25rem;
+  --spacing-space-sm: 0.5rem;
+  --spacing-space-md: 1rem;
+  --spacing-space-lg: 1.5rem;
+  --spacing-space-xl: 2.5rem;
+
+  /* Font Families */
+  --font-sans: var(--font-plus-jakarta), var(--font-geist-sans), 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --background: #f8f9ff;
+  --foreground: #0b1c30;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 숫자/시간 레이블 정렬용 */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 글래스모피즘 표면 효과 */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
 }
