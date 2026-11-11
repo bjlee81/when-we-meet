@@ -19,3 +19,10 @@
 - `vitest.config.ts`: `fileParallelism: false` (db.test/feedback.test의 local.db 공유로 인한 간헐 실패 해결).
 - 검증: npm test 54 passed(반복 3회 안정), build OK, 별칭 라우트 로컬 호출 200.
 - 한계: 실제 삼성 인터넷 차단 규칙은 재현 불가 → 배포 후 사용자 기기 확인 필요.
+
+## 추가 변경 2 (폼 제출 폴백) - 2026-11-11
+- 사용자 확인: 새 코드 반영 후에도 fetch(두 경로 + 재시도) 차단됨.
+- `src/app/create/route.ts` 신규: HTML 폼 POST → 모임 생성 후 303 리다이렉트(`/event/<id>`), 오류 시 `/?error=...`.
+- `NetworkError` 클래스 추가. 홈 폼은 fetch가 NetworkError로 끝나면 `form.submit()`(네이티브 페이지 이동)으로 폴백. `?error=` 쿼리를 읽어 에러 표시.
+- 테스트 `create-form.test.ts` 추가. npm test 56 passed, build OK, 로컬 curl 303 확인.
+- 한계: 실기기(삼성 인터넷 광고차단) 확인 필요.

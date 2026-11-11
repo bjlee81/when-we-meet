@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Calendar, Sparkles, Lock, ArrowRight, CheckCircle2, ShieldAlert } from 'lucide-react';
 import { AdBanner } from '@/components/AdBanner';
-import { fetchJsonWithRetry } from '@/lib/fetch-json';
+import { fetchJsonWithRetry, NetworkError } from '@/lib/fetch-json';
 
 export default function Home() {
   const router = useRouter();
@@ -15,11 +15,14 @@ export default function Home() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     const today = new Date();
     const nextWeek = new Date();
     nextWeek.setDate(nextWeek.getDate() + 7);
+    const urlError = new URLSearchParams(window.location.search).get('error');
+    if (urlError) setError(urlError);
     setStartDate(today.toISOString().split('T')[0]);
     setEndDate(nextWeek.toISOString().split('T')[0]);
   }, []);
@@ -70,6 +73,11 @@ export default function Home() {
       }
     } catch (err: any) {
       console.error('Create error:', err);
+      if (err instanceof NetworkError && formRef.current) {
+        // fetch/XHR 이 차단된 환경: 일반 폼 제출(페이지 이동)로 폴백
+        formRef.current.submit();
+        return;
+      }
       setError(err?.message || '네트워크 연결 오류가 발생했습니다.');
     } finally {
       setLoading(false);
@@ -110,7 +118,7 @@ export default function Home() {
             </div>
           )}
 
-          <form onSubmit={handleCreate} className="space-y-4">
+          <form ref={formRef} method="POST" action="/create" onSubmit={handleCreate} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-1">
                 모임 이름 <span className="text-rose-500">*</span>
@@ -118,6 +126,7 @@ export default function Home() {
               <input
                 type="text"
                 placeholder="예: 연말 송년회, 보드게임 모임, 제주도 여행"
+                name="title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 required
@@ -132,6 +141,7 @@ export default function Home() {
               <input
                 type="text"
                 placeholder="예: 동기 연말모임 (모임 장소는 나중에 확정 가능)"
+                name="description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/50 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
@@ -145,6 +155,7 @@ export default function Home() {
                 </label>
                 <input
                   type="date"
+                  name="startDate"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
                   required
@@ -158,6 +169,7 @@ export default function Home() {
                 </label>
                 <input
                   type="date"
+                  name="endDate"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
                   required
@@ -178,6 +190,7 @@ export default function Home() {
               <input
                 type="password"
                 placeholder="4자리 이상의 비밀번호 입력"
+                name="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required

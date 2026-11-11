@@ -13,6 +13,14 @@ export interface FetchJsonResult {
 const NETWORK_ERROR_MESSAGE =
   '네트워크 연결이 불안정합니다. 잠시 후 다시 시도해주세요. (삼성 인터넷 사용 시 광고/추적 차단 기능을 끄거나 크롬으로 접속해 보세요)';
 
+/** 네트워크 단계 실패(차단/단절)를 HTTP 오류와 구분하기 위한 에러 */
+export class NetworkError extends Error {
+  constructor(message: string = NETWORK_ERROR_MESSAGE) {
+    super(message);
+    this.name = 'NetworkError';
+  }
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -34,7 +42,7 @@ export async function fetchJsonWithRetry(
       return { ok: res.ok, status: res.status, data };
     } catch {
       if (attempt >= attempts) {
-        throw new Error(NETWORK_ERROR_MESSAGE);
+        throw new NetworkError();
       }
       await sleep(retryDelayMs * (attempt + 1));
     }
