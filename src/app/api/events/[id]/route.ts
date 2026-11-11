@@ -18,7 +18,7 @@ export async function GET(
 
     // 보안상 passwordHash는 제외하고 반환
     const { passwordHash, ...safeEvent } = event;
-    return NextResponse.json({ event: safeEvent });
+    return NextResponse.json({ success: true, event: safeEvent });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

@@ -26,6 +26,7 @@ import {
   Paintbrush
 } from 'lucide-react';
 import { AdBanner } from '@/components/AdBanner';
+import { fetchJsonWithRetry } from '@/lib/fetch-json';
 import { buildShareMessage } from '@/lib/share';
 import { generateGoogleCalendarUrl, downloadIcsFile } from '@/lib/calendar';
 import { 
@@ -124,16 +125,34 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
 
   const fetchEvent = async () => {
     try {
-      const res = await fetch(`/api/events/${eventId}`);
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || '모임 정보를 불러오지 못했습니다.');
+      // 광고 차단기 우회 및 재시도 지원
+      let resData: any = null;
+      let isOk = false;
+
+      try {
+        const { ok, data } = await fetchJsonWithRetry(
+          [`/api/meetups/${eventId}`, `/api/events/${eventId}`],
+          { method: 'GET' }
+        );
+        isOk = ok;
+        resData = data;
+      } catch {
+        // Fallback to direct fetch
+        const directRes = await fetch(`/api/events/${eventId}`, { cache: 'no-store' });
+        isOk = directRes.ok;
+        resData = await directRes.json().catch(() => ({}));
       }
-      setEvent(data.event);
+
+      if (!isOk || (!resData?.event && !resData?.success)) {
+        throw new Error(resData?.error || '모임 정보를 불러오지 못했습니다.');
+      }
+
+      const eventData = resData.event || resData;
+      setEvent(eventData);
 
       // 내가 투표한 정보 자동 로드
       const devToken = getDeviceToken();
-      const myVote = data.event.votes.find((v: any) => v.deviceToken === devToken);
+      const myVote = eventData.votes?.find((v: any) => v.deviceToken === devToken);
       if (myVote) {
         setMyParticipantName(myVote.participantName);
         setMyAvailableDates(myVote.availableDates || []);
@@ -195,20 +214,22 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
     setSubmitting(true);
     try {
       const devToken = getDeviceToken();
-      const res = await fetch(`/api/events/${eventId}/vote`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          participantName: myParticipantName.trim(),
-          pin: myPin || undefined,
-          deviceToken: devToken,
-          availableDates: myAvailableDates,
-          maybeDates: myMaybeDates,
-        }),
-      });
+      const { ok, data } = await fetchJsonWithRetry(
+        [`/api/meetups/${eventId}/vote`, `/api/events/${eventId}/vote`],
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            participantName: myParticipantName.trim(),
+            pin: myPin || undefined,
+            deviceToken: devToken,
+            availableDates: myAvailableDates,
+            maybeDates: myMaybeDates,
+          }),
+        }
+      );
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
+      if (!ok || !data.success) {
         throw new Error(data.error || '투표 저장에 실패했습니다.');
       }
 
@@ -250,19 +271,21 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
 
     setEditLoading(true);
     try {
-      const res = await fetch(`/api/events/${eventId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: editTitle.trim(),
-          description: editDescription.trim(),
-          location: editLocation.trim(),
-          password: editPassword,
-        }),
-      });
+      const { ok, data } = await fetchJsonWithRetry(
+        [`/api/meetups/${eventId}`, `/api/events/${eventId}`],
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: editTitle.trim(),
+            description: editDescription.trim(),
+            location: editLocation.trim(),
+            password: editPassword,
+          }),
+        }
+      );
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
+      if (!ok || !data.success) {
         throw new Error(data.error || '수정에 실패했습니다.');
       }
 
@@ -288,14 +311,16 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
 
     setDeleteLoading(true);
     try {
-      const res = await fetch(`/api/events/${eventId}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: deletePassword }),
-      });
+      const { ok, data } = await fetchJsonWithRetry(
+        [`/api/meetups/${eventId}`, `/api/events/${eventId}`],
+        {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: deletePassword }),
+        }
+      );
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
+      if (!ok || !data.success) {
         throw new Error(data.error || '삭제에 실패했습니다.');
       }
 
@@ -358,17 +383,19 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
 
     setFinalizeLoading(true);
     try {
-      const res = await fetch(`/api/events/${eventId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          finalDate: targetDate,
-          password: finalizePassword,
-        }),
-      });
+      const { ok, data } = await fetchJsonWithRetry(
+        [`/api/meetups/${eventId}`, `/api/events/${eventId}`],
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            finalDate: targetDate,
+            password: finalizePassword,
+          }),
+        }
+      );
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
+      if (!ok || !data.success) {
         throw new Error(data.error || '날짜 확정/해제 처리에 실패했습니다.');
       }
 
