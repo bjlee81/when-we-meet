@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Calendar, Sparkles, Lock, ArrowRight, CheckCircle2, ShieldAlert } from 'lucide-react';
 import { AdBanner } from '@/components/AdBanner';
+import { fetchJsonWithRetry } from '@/lib/fetch-json';
 
 export default function Home() {
   const router = useRouter();
@@ -42,7 +43,7 @@ export default function Home() {
 
     setLoading(true);
     try {
-      const res = await fetch('/api/events', {
+      const { ok, data } = await fetchJsonWithRetry('/api/events', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -57,8 +58,7 @@ export default function Home() {
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
+      if (!ok || !data.success) {
         throw new Error(data.error || '모임 생성 실패');
       }
 
